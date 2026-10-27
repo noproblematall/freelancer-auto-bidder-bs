@@ -17,8 +17,11 @@ model User {
   openaiModel   String   @default("gpt-5.4-mini") @map("openai_model")
 
   // Bidding Settings
-  bidDelaySeconds Float   @default(10)    @map("bid_delay_seconds")
+  bidDelaySeconds Float   @default(30)    @map("bid_delay_seconds")
   sealBids        Boolean @default(false) @map("seal_bids")
+  // Account-wide bid caps (Settings → Auto-Bidding); shared by every profile
+  maxBidsPerHour  Int     @default(8)     @map("max_bids_per_hour")
+  maxBidsPerDay   Int     @default(80)    @map("max_bids_per_day")
 
   // Global Schedule Settings
   scheduleEnabled   Boolean  @default(false) @map("schedule_enabled")

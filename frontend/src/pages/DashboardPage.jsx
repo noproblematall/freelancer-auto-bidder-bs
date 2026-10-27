@@ -168,7 +168,7 @@ export default function DashboardPage() {
       {stats && !setupDismissed && (() => {
         const steps = [
           { label: 'Connect your Freelancer.com account', done: !!freelancer?.connected, path: '/settings' },
-          { label: 'Add your OpenAI API key', done: !!user?.openaiConfigured, path: '/settings' },
+          { label: 'Add your OpenAI API key', done: !!user?.openaiConfigured, path: '/settings?section=openai' },
           { label: 'Create a bidding profile', done: stats.profileCount > 0, path: '/profiles' },
           { label: 'Activate a profile to start bidding', done: stats.activeProfiles > 0, path: '/profiles' },
         ]

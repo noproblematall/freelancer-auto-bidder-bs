@@ -3,17 +3,36 @@ import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
 
+// Settings sections, in display order. The key is used in the URL (?section=…).
+const SECTIONS = [
+  { key: 'freelancer', label: 'Freelancer.com' },
+  { key: 'openai', label: 'OpenAI' },
+  { key: 'autobidding', label: 'Auto-Bidding' },
+  { key: 'schedule', label: 'Schedule' },
+  { key: 'telegram', label: 'Telegram' },
+  { key: 'webhook', label: 'Webhook' },
+]
+
 export default function SettingsPage() {
   const { user, freelancer, updateSettings, connectFreelancer, disconnectFreelancer, fetchStatus } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
+  // Which settings section is shown; kept in the URL so links can open a section directly
+  const requestedSection = searchParams.get('section')
+  const activeSection = SECTIONS.some(s => s.key === requestedSection) ? requestedSection : SECTIONS[0].key
+  function selectSection(key) {
+    setSearchParams(prev => { const next = new URLSearchParams(prev); next.set('section', key); return next }, { replace: true })
+  }
   // Two-step confirm for clearing Freelancer credentials (see handleSaveFlCreds)
   const clearCredsArmedRef = useRef(false)
 
   const [openaiKey, setOpenaiKey] = useState(user?.openaiConfigured ? '••••••••••••••••' : '')
   const [openaiModel, setOpenaiModel] = useState(user?.openaiModel || 'gpt-5.4-mini')
-  const [bidDelaySeconds, setBidDelaySeconds] = useState(user?.bidDelaySeconds || 10)
+  const [bidDelaySeconds, setBidDelaySeconds] = useState(user?.bidDelaySeconds ?? 30)
   const [sealBids, setSealBids] = useState(user?.sealBids || false)
   const [bidDelayMessage, setBidDelayMessage] = useState(null)
+  const [maxBidsPerHour, setMaxBidsPerHour] = useState(user?.maxBidsPerHour ?? 8)
+  const [maxBidsPerDay, setMaxBidsPerDay] = useState(user?.maxBidsPerDay ?? 80)
+  const [rateLimitMessage, setRateLimitMessage] = useState(null)
   const [openaiTesting, setOpenaiTesting] = useState(false)
   const [openaiTestMessage, setOpenaiTestMessage] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -83,6 +102,8 @@ export default function SettingsPage() {
     if (user?.sealBids !== undefined) {
       setSealBids(user.sealBids)
     }
+    if (user?.maxBidsPerHour !== undefined) setMaxBidsPerHour(user.maxBidsPerHour)
+    if (user?.maxBidsPerDay !== undefined) setMaxBidsPerDay(user.maxBidsPerDay)
     if (user?.schedule) {
       setScheduleEnabled(user.schedule.enabled || false)
       setTimezone(user.schedule.timezone || 'America/New_York')
@@ -204,6 +225,22 @@ export default function SettingsPage() {
       setOpenaiTestMessage({ type: 'error', text: err.response?.data?.error || 'Key test failed.' })
     } finally {
       setOpenaiTesting(false)
+    }
+  }
+
+  // Save a rate-limit field on blur (same pattern as bid delay): clamp, persist, report.
+  async function saveRateLimit(field, raw, max, setter) {
+    let value = parseInt(raw, 10)
+    if (isNaN(value) || value < 1) value = 1
+    if (value > max) value = max
+    setter(value)
+    setRateLimitMessage(null)
+    try {
+      await updateSettings({ [field]: value })
+      setRateLimitMessage({ type: 'success', text: 'Saved.' })
+      setTimeout(() => setRateLimitMessage(null), 2500)
+    } catch {
+      setRateLimitMessage({ type: 'error', text: 'Failed to save rate limit — try again.' })
     }
   }
 
@@ -469,54 +506,36 @@ export default function SettingsPage() {
         </span>
       </div>
 
-      {/* Status Overview Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
-        <div className="bg-white dark:bg-navy-800/90 rounded-xl border border-slate-200 dark:border-white/6 shadow-lg dark:shadow-2xl dark:shadow-black/50 px-5 py-4">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-sm font-medium text-slate-700 dark:text-slate-400">Freelancer</p>
-            <span className={`w-2.5 h-2.5 rounded-full ${
-              flStatus === 'connected' ? 'bg-emerald-500' : flStatus === 'expired' ? 'bg-amber-500' : 'bg-slate-300'
-            }`} />
-          </div>
-          <p className={`text-base font-semibold ${
-            flStatus === 'connected' ? 'text-emerald-700 dark:text-emerald-400' : flStatus === 'expired' ? 'text-amber-700 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'
-          }`}>
-            {flStatus === 'connected' ? (freelancer.username ? `@${freelancer.username}` : 'Connected')
-              : flStatus === 'expired' ? 'Token Expired'
-              : 'Not Connected'}
-          </p>
-        </div>
+      {/* Section navigation + the selected section */}
+      <div className="flex flex-col lg:flex-row gap-6 items-start">
+        <nav aria-label="Settings sections" className="w-full lg:w-44 shrink-0 lg:sticky lg:top-6">
+          <ul className="flex lg:flex-col gap-1 overflow-x-auto pb-1 lg:pb-0">
+            {SECTIONS.map(s => {
+              const active = s.key === activeSection
+              return (
+                <li key={s.key} className="shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => selectSection(s.key)}
+                    aria-current={active ? 'page' : undefined}
+                    className={`w-full block px-3 py-2 rounded-lg text-sm text-left whitespace-nowrap transition-colors ${
+                      active
+                        ? 'bg-navy-900 dark:bg-emerald-400 text-white dark:text-navy-950 font-medium shadow-sm'
+                        : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-navy-800'
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </nav>
 
-        <div className="bg-white dark:bg-navy-800/90 rounded-xl border border-slate-200 dark:border-white/6 shadow-lg dark:shadow-2xl dark:shadow-black/50 px-5 py-4">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-sm font-medium text-slate-700 dark:text-slate-400">OpenAI</p>
-            <span className={`w-2.5 h-2.5 rounded-full ${aiStatus === 'configured' ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-          </div>
-          <p className={`text-base font-semibold ${aiStatus === 'configured' ? 'text-navy-950 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>
-            {aiStatus === 'configured' ? (models.find(m => m.value === openaiModel)?.label || openaiModel) : 'Not Configured'}
-          </p>
-        </div>
-
-        <div className="bg-white dark:bg-navy-800/90 rounded-xl border border-slate-200 dark:border-white/6 shadow-lg dark:shadow-2xl dark:shadow-black/50 px-5 py-4">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-sm font-medium text-slate-700 dark:text-slate-400">Growlance</p>
-            <span className={`w-2.5 h-2.5 rounded-full ${schedulerRunning ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-          </div>
-          <p className={`text-base font-medium ${schedulerRunning ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>
-            {schedulerRunning
-              ? `Running${activeProfileCount > 0 ? ` · ${activeProfileCount} profile${activeProfileCount > 1 ? 's' : ''}` : ''}`
-              : 'Stopped'}
-          </p>
-        </div>
-      </div>
-
-      {/* Main Settings Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-        {/* Left Column — Freelancer + Auto-Bidding */}
-        <div className="space-y-6">
+        <div className="flex-1 min-w-0 space-y-6">
 
           {/* Freelancer.com Connection */}
+          {activeSection === 'freelancer' && (
           <div className="bg-white dark:bg-navy-800/90 rounded-xl border border-slate-200 dark:border-white/6 shadow-lg dark:shadow-2xl dark:shadow-black/50 overflow-hidden">
             <div className="px-6 py-5 border-b border-slate-100 dark:border-white/8">
               <div className="flex items-center justify-between">
@@ -694,8 +713,10 @@ export default function SettingsPage() {
               )}
             </div>
           </div>
+          )}
 
           {/* OpenAI Configuration */}
+          {activeSection === 'openai' && (
           <div className="bg-white dark:bg-navy-800/90 rounded-xl border border-slate-200 dark:border-white/6 shadow-lg dark:shadow-2xl dark:shadow-black/50 overflow-hidden h-fit">
             <div className="px-6 py-5 border-b border-slate-100 dark:border-white/8">
               <div className="flex items-center justify-between">
@@ -804,8 +825,10 @@ export default function SettingsPage() {
               )}
             </form>
           </div>
+          )}
 
           {/* Telegram Notifications */}
+          {activeSection === 'telegram' && (
           <div className="bg-white dark:bg-navy-800/90 rounded-xl border border-slate-200 dark:border-white/6 shadow-lg dark:shadow-2xl dark:shadow-black/50 overflow-hidden">
             <div className="px-6 py-5 border-b border-slate-100 dark:border-white/8">
               <div className="flex items-center justify-between">
@@ -947,8 +970,10 @@ export default function SettingsPage() {
               )}
             </div>
           </div>
+          )}
 
           {/* Webhook */}
+          {activeSection === 'webhook' && (
           <div className="bg-white dark:bg-navy-800/90 rounded-xl border border-slate-200 dark:border-white/6 shadow-lg dark:shadow-2xl dark:shadow-black/50 overflow-hidden">
             <div className="px-6 py-5 border-b border-slate-100 dark:border-white/8">
               <div className="flex items-center justify-between">
@@ -1050,12 +1075,10 @@ export default function SettingsPage() {
               )}
             </div>
           </div>
-        </div>
-
-        {/* Right Column — Schedule & OpenAI Configuration */}
-        <div className="space-y-6">
+          )}
 
           {/* Auto-Bidding */}
+          {activeSection === 'autobidding' && (
           <div className="bg-white dark:bg-navy-800/90 rounded-xl border border-slate-200 dark:border-white/6 shadow-lg dark:shadow-2xl dark:shadow-black/50 overflow-hidden">
             <div className="px-6 py-5 border-b border-slate-100 dark:border-white/8">
               <div className="flex items-center justify-between">
@@ -1103,20 +1126,6 @@ export default function SettingsPage() {
                 </button>
               </div>
 
-              <div className="flex items-center justify-between p-4 rounded-lg bg-slate-50 dark:bg-navy-900/50 border border-slate-200 dark:border-white/8">
-                <div>
-                  <p className="text-sm font-medium text-navy-950 dark:text-white">Active Profiles</p>
-                  <p className="text-xs text-slate-700 dark:text-slate-200 mt-0.5">
-                    {activeProfileCount > 0
-                      ? `${activeProfileCount} profile${activeProfileCount > 1 ? 's' : ''} actively searching & bidding`
-                      : 'No active profiles — activate one on the Profiles page'}
-                  </p>
-                </div>
-                <span className={`text-lg font-semibold ${activeProfileCount > 0 ? 'text-emerald-500 dark:text-emerald-400' : 'text-slate-300 dark:text-slate-600'}`}>
-                  {activeProfileCount}
-                </span>
-              </div>
-
               <div className="p-4 rounded-lg bg-slate-50 dark:bg-navy-900/50 border border-slate-200 dark:border-white/8">
                 <label htmlFor="bid-delay" className="block text-sm font-medium text-navy-950 dark:text-white mb-2">
                   Bid Delay
@@ -1127,13 +1136,13 @@ export default function SettingsPage() {
                     type="number"
                     min="0"
                     max="3600"
-                    step="0.1"
+                    step="1"
                     value={bidDelaySeconds}
                     onChange={(e) => setBidDelaySeconds(e.target.value)}
                     onBlur={async (e) => {
                       // Save on blur, not per keystroke — typing "30" must not
                       // momentarily persist 3 (or a cleared field persist 0).
-                      let value = parseFloat(e.target.value)
+                      let value = Math.round(parseFloat(e.target.value))
                       if (isNaN(value) || value < 0) value = 0
                       if (value > 3600) value = 3600
                       setBidDelaySeconds(value)
@@ -1158,7 +1167,49 @@ export default function SettingsPage() {
                   )}
                 </div>
                 <p className="text-xs text-slate-700 dark:text-slate-200 mt-2">
-                  Time to wait between placing bids to avoid rate limiting. Recommended: 10-30s.
+                  Time to wait between placing bids to avoid rate limiting. Recommended: 30s or more.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-lg bg-slate-50 dark:bg-navy-900/50 border border-slate-200 dark:border-white/8">
+                <p className="text-sm font-medium text-navy-950 dark:text-white mb-2">Rate Limits</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="max-bids-hour" className="block text-xs font-medium text-slate-700 dark:text-slate-200 mb-1.5">Max Bids / Hour</label>
+                    <input
+                      id="max-bids-hour"
+                      type="number"
+                      min="1"
+                      max="1000"
+                      value={maxBidsPerHour}
+                      onChange={(e) => setMaxBidsPerHour(e.target.value)}
+                      onBlur={(e) => saveRateLimit('maxBidsPerHour', e.target.value, 1000, setMaxBidsPerHour)}
+                      className="w-full px-3 py-2 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500/20 focus:border-navy-500 transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="max-bids-day" className="block text-xs font-medium text-slate-700 dark:text-slate-200 mb-1.5">Max Bids / Day</label>
+                    <input
+                      id="max-bids-day"
+                      type="number"
+                      min="1"
+                      max="10000"
+                      value={maxBidsPerDay}
+                      onChange={(e) => setMaxBidsPerDay(e.target.value)}
+                      onBlur={(e) => saveRateLimit('maxBidsPerDay', e.target.value, 10000, setMaxBidsPerDay)}
+                      className="w-full px-3 py-2 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500/20 focus:border-navy-500 transition-colors"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-slate-700 dark:text-slate-200 mt-2">
+                  Caps apply across all active profiles combined. Queued review drafts count toward them.
+                  {rateLimitMessage && (
+                    <span className={`ml-2 font-medium ${
+                      rateLimitMessage.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                    }`}>
+                      {rateLimitMessage.text}
+                    </span>
+                  )}
                 </p>
               </div>
 
@@ -1223,9 +1274,11 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
+          )}
 
 
           {/* Schedule */}
+          {activeSection === 'schedule' && (
           <div className="bg-white dark:bg-navy-800/90 rounded-xl border border-slate-200 dark:border-white/6 shadow-lg dark:shadow-2xl dark:shadow-black/50 overflow-hidden">
             <div className="px-6 py-5 border-b border-slate-100 dark:border-white/8">
               <div className="flex items-center justify-between">
@@ -1397,6 +1450,7 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
+          )}
 
         </div>
 

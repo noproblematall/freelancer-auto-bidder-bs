@@ -435,7 +435,7 @@ export default function BidsPage() {
       )}
 
       {/* Rate Limit Warnings */}
-      {stats?.profileLimits?.some(p => p.hourly.atLimit || p.daily.atLimit) && (
+      {(stats?.limits?.hourly?.atLimit || stats?.limits?.daily?.atLimit) && (
         <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50">
           <div className="flex items-start gap-2.5">
             <svg className="w-4.5 h-4.5 text-amber-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -443,16 +443,13 @@ export default function BidsPage() {
             </svg>
             <div className="space-y-1">
               <p className="text-sm font-medium text-amber-800 dark:text-amber-300">Rate limit reached</p>
-              {stats.profileLimits.filter(p => p.hourly.atLimit || p.daily.atLimit).map(p => (
-                <p key={p.profileId} className="text-xs text-amber-700 dark:text-amber-400">
-                  <span className="font-medium">{p.profileName}</span>
-                  {' — '}
-                  {[
-                    p.hourly.atLimit && `hourly limit (${p.hourly.used}/${p.hourly.limit})`,
-                    p.daily.atLimit && `daily limit (${p.daily.used}/${p.daily.limit})`,
-                  ].filter(Boolean).join(' and ')}
-                </p>
-              ))}
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                {[
+                  stats.limits.hourly.atLimit && `hourly limit (${stats.limits.hourly.used}/${stats.limits.hourly.limit})`,
+                  stats.limits.daily.atLimit && `daily limit (${stats.limits.daily.used}/${stats.limits.daily.limit})`,
+                ].filter(Boolean).join(' and ')}
+                {' — bidding resumes when the window rolls over. Adjust the caps under Settings → Auto-Bidding.'}
+              </p>
             </div>
           </div>
         </div>

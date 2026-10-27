@@ -45,33 +45,28 @@ router.get('/stats', async (req, res, next) => {
       prisma.bid.count({ where: { ...where, status: 'pending_review' } }),
     ]);
 
-    // Per-profile rate-limit usage so the frontend can show warnings
-    const activeProfiles = await prisma.biddingProfile.findMany({
-      where: { userId: req.userId, isActive: true },
-      select: { id: true, name: true, maxBidsPerHour: true, maxBidsPerDay: true },
-    });
-
+    // Account-wide rate-limit usage so the frontend can show warnings.
     // Mirror the engine's cap accounting: queued review drafts count too.
-    const profileLimits = await Promise.all(activeProfiles.map(async (p) => {
-      const [hourCount, dayCount] = await Promise.all([
-        prisma.bid.count({ where: { profileId: p.id, OR: [
-          { status: 'placed', placedAt: { gte: oneHourAgo } },
-          { status: 'pending_review', createdAt: { gte: oneHourAgo } },
-        ] } }),
-        prisma.bid.count({ where: { profileId: p.id, OR: [
-          { status: 'placed', placedAt: { gte: last24Hours } },
-          { status: 'pending_review', createdAt: { gte: last24Hours } },
-        ] } }),
-      ]);
-      return {
-        profileId: p.id,
-        profileName: p.name,
-        hourly: { used: hourCount, limit: p.maxBidsPerHour, atLimit: hourCount >= p.maxBidsPerHour },
-        daily: { used: dayCount, limit: p.maxBidsPerDay, atLimit: dayCount >= p.maxBidsPerDay },
-      };
-    }));
+    const caps = await prisma.user.findUnique({
+      where: { id: req.userId },
+      select: { maxBidsPerHour: true, maxBidsPerDay: true },
+    });
+    const [hourCount, dayCount] = await Promise.all([
+      prisma.bid.count({ where: { userId: req.userId, OR: [
+        { status: 'placed', placedAt: { gte: oneHourAgo } },
+        { status: 'pending_review', createdAt: { gte: oneHourAgo } },
+      ] } }),
+      prisma.bid.count({ where: { userId: req.userId, OR: [
+        { status: 'placed', placedAt: { gte: last24Hours } },
+        { status: 'pending_review', createdAt: { gte: last24Hours } },
+      ] } }),
+    ]);
+    const limits = {
+      hourly: { used: hourCount, limit: caps.maxBidsPerHour, atLimit: hourCount >= caps.maxBidsPerHour },
+      daily: { used: dayCount, limit: caps.maxBidsPerDay, atLimit: dayCount >= caps.maxBidsPerDay },
+    };
 
-    res.json({ total, placed, converted, rejected, retracted, errored, last24h, thisHour, pendingReview, profileLimits });
+    res.json({ total, placed, converted, rejected, retracted, errored, last24h, thisHour, pendingReview, limits });
   } catch (err) {
     next(err);
   }

@@ -22,8 +22,6 @@ const INITIAL_STATE = {
   milestonePercentage: '100',
   minRelevanceScore: '70',
   proposalPrompt: '',
-  maxBidsPerHour: '8',
-  maxBidsPerDay: '80',
 }
 
 export default function ProfileForm({ profile = null, onSave, onCancel, saving = false, error: externalError = null }) {
@@ -53,8 +51,6 @@ export default function ProfileForm({ profile = null, onSave, onCancel, saving =
         milestonePercentage: String(profile.milestonePercentage ?? 100),
         minRelevanceScore: String(profile.minRelevanceScore ?? 70),
         proposalPrompt: profile.proposalPrompt || '',
-        maxBidsPerHour: String(profile.maxBidsPerHour ?? 8),
-        maxBidsPerDay: String(profile.maxBidsPerDay ?? 80),
       })
     } else {
       setForm(INITIAL_STATE)
@@ -287,21 +283,6 @@ export default function ProfileForm({ profile = null, onSave, onCancel, saving =
           <div>
             <label className={labelClass}>Custom Proposal Prompt</label>
             <textarea value={form.proposalPrompt} onChange={set('proposalPrompt')} rows={5} className={inputClass} placeholder="Leave blank to use the default prompt from ChatGPT-prompt.md" />
-          </div>
-        </div>
-      </div>
-
-      {/* Rate Limits */}
-      <div className={card}>
-        <p className={`${sectionLabel} mb-4`}>Rate Limits</p>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className={labelClass}>Max Bids / Hour</label>
-            <input type="number" value={form.maxBidsPerHour} onChange={set('maxBidsPerHour')} className={inputClass} min="1" />
-          </div>
-          <div>
-            <label className={labelClass}>Max Bids / Day</label>
-            <input type="number" value={form.maxBidsPerDay} onChange={set('maxBidsPerDay')} className={inputClass} min="1" />
           </div>
         </div>
       </div>

@@ -255,10 +255,6 @@ export default function ProfilesPage() {
                     <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">AI Score</span>
                     <span className="font-medium text-slate-700 dark:text-slate-200">≥{profile.minRelevanceScore}%</span>
                   </div>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Rate</span>
-                    <span className="font-medium text-slate-700 dark:text-slate-200">{profile.maxBidsPerHour}/hr · {profile.maxBidsPerDay}/day</span>
-                  </div>
                 </div>
 
                 {/* Row 2: Targeting pills */}

@@ -365,6 +365,8 @@ router.get('/status', authMiddleware, async (req, res, next) => {
         openaiModel: true,
         bidDelaySeconds: true,
         sealBids: true,
+        maxBidsPerHour: true,
+        maxBidsPerDay: true,
         scheduleEnabled: true,
         scheduleTimezone: true,
         scheduleStartTime: true,
@@ -399,6 +401,8 @@ router.get('/status', authMiddleware, async (req, res, next) => {
         openaiModel: user.openaiModel,
         bidDelaySeconds: user.bidDelaySeconds,
         sealBids: user.sealBids,
+        maxBidsPerHour: user.maxBidsPerHour,
+        maxBidsPerDay: user.maxBidsPerDay,
         freelancerApiConfigured: !!(user.freelancerClientId && user.freelancerClientSecret),
         freelancerClientId: user.freelancerClientId || null,
         schedule: {
@@ -480,6 +484,8 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
       openaiModel,
       bidDelaySeconds,
       sealBids,
+      maxBidsPerHour,
+      maxBidsPerDay,
       scheduleEnabled,
       scheduleTimezone,
       scheduleStartTime,
@@ -582,6 +588,22 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
         return res.status(400).json({ error: 'sealBids must be a boolean' });
       }
       data.sealBids = sealBids;
+    }
+
+    // Account-wide rate limits (shared by every profile)
+    if (maxBidsPerHour !== undefined) {
+      const n = parseInt(maxBidsPerHour, 10);
+      if (isNaN(n) || n < 1 || n > 1000) {
+        return res.status(400).json({ error: 'Max bids per hour must be between 1 and 1000' });
+      }
+      data.maxBidsPerHour = n;
+    }
+    if (maxBidsPerDay !== undefined) {
+      const n = parseInt(maxBidsPerDay, 10);
+      if (isNaN(n) || n < 1 || n > 10000) {
+        return res.status(400).json({ error: 'Max bids per day must be between 1 and 10000' });
+      }
+      data.maxBidsPerDay = n;
     }
 
     // Schedule settings with comprehensive validation
@@ -713,6 +735,8 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
       openaiModel: true,
       bidDelaySeconds: true,
       sealBids: true,
+      maxBidsPerHour: true,
+      maxBidsPerDay: true,
       scheduleEnabled: true,
       scheduleTimezone: true,
       scheduleStartTime: true,
@@ -778,6 +802,8 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
         openaiModel: user.openaiModel,
         bidDelaySeconds: user.bidDelaySeconds,
         sealBids: user.sealBids,
+        maxBidsPerHour: user.maxBidsPerHour,
+        maxBidsPerDay: user.maxBidsPerDay,
         freelancerApiConfigured: !!(user.freelancerClientId && user.freelancerClientSecret),
         freelancerClientId: user.freelancerClientId || null,
         schedule: {
