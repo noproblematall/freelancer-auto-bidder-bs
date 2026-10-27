@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import ProfilesPage from './pages/ProfilesPage'
 import ProfileFormPage from './pages/ProfileFormPage'
+import SharedProfilePage from './pages/SharedProfilePage'
 import ProjectsPage from './pages/ProjectsPage'
 import BidsPage from './pages/BidsPage'
 import ActivityLogsPage from './pages/ActivityLogsPage'
@@ -46,6 +47,7 @@ export default function App() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/profiles" element={<ProfilesPage />} />
           <Route path="/profiles/new" element={<ProfileFormPage />} />
+          <Route path="/profiles/shared" element={<SharedProfilePage />} />
           <Route path="/profiles/:id/edit" element={<ProfileFormPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/bids" element={<BidsPage />} />

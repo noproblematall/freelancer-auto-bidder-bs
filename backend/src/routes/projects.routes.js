@@ -6,6 +6,7 @@ const { searchProjects, getProjectById, getJobs } = require('../services/freelan
 const { createOpenAIClient } = require('../services/openai/client');
 const { analyzeProject } = require('../services/openai/analyzer');
 const { generateProposal } = require('../services/openai/proposalGenerator');
+const { applySharedProfile } = require('../services/bidding/sharedProfile');
 const { decrypt } = require('../utils/tokenManager');
 const logger = require('../utils/logger');
 
@@ -244,8 +245,10 @@ router.post('/:id/analyze', async (req, res, next) => {
     // Optionally use a bidding profile for context
     let profile = null;
     if (req.body.profileId) {
-      profile = await prisma.biddingProfile.findUnique({ where: { id: parseInt(req.body.profileId) } });
+      profile = await prisma.biddingProfile.findFirst({ where: { id: parseInt(req.body.profileId), userId: req.userId } });
     }
+    // Shared settings supply skills/experience context even when no profile is picked
+    profile = await applySharedProfile(profile, req.userId);
 
     // Attach jobNames for the analyzer
     project.jobNames = parseJobNames(project);
@@ -288,8 +291,10 @@ router.post('/:id/generate-proposal', async (req, res, next) => {
 
     let profile = null;
     if (req.body.profileId) {
-      profile = await prisma.biddingProfile.findUnique({ where: { id: parseInt(req.body.profileId) } });
+      profile = await prisma.biddingProfile.findFirst({ where: { id: parseInt(req.body.profileId), userId: req.userId } });
     }
+    // Shared settings supply skills/experience context even when no profile is picked
+    profile = await applySharedProfile(profile, req.userId);
 
     project.jobNames = parseJobNames(project);
 

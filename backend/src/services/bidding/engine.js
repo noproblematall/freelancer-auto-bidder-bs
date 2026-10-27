@@ -9,6 +9,7 @@ const { createOpenAIClient } = require('../openai/client');
 const { convertFromUSD, roundHourlyRate } = require('../currency');
 const { analyzeProject } = require('../openai/analyzer');
 const { generateProposal } = require('../openai/proposalGenerator');
+const { applySharedProfile } = require('./sharedProfile');
 const logger = require('../../utils/logger');
 
 /**
@@ -49,6 +50,10 @@ async function logProblemOnce(userId, action, message, windowMs = 6 * 60 * 60 * 
 
 async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1 } = {}) {
   const results = { searched: 0, filtered: 0, analyzed: 0, qualified: 0, placed: 0, queued: 0, errors: 0, openaiError: null };
+
+  // Fold the user's shared settings (targeting exclusions, skills/experience
+  // context, …) into this profile so every step below sees the effective values.
+  profile = await applySharedProfile(profile, profile.userId);
 
   // Step 1: Rate limit check
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);

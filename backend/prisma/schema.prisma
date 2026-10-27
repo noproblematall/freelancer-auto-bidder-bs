@@ -42,6 +42,10 @@ model User {
   webhookEnabled Boolean @default(false) @map("webhook_enabled")
   webhookUrl     String? @map("webhook_url")
 
+  // Shared profile settings (JSON) — targeting rules and AI context applied to
+  // every bidding profile. See services/bidding/sharedProfile.js for the shape.
+  sharedProfile  String? @map("shared_profile")
+
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
