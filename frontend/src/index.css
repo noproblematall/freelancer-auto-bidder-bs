@@ -15,7 +15,9 @@
   --color-navy-900: #1a2029;
   --color-navy-950: #12151b;
 
-  --font-sans: 'Outfit', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Plus Jakarta Sans', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 @layer base {
@@ -23,9 +25,10 @@
     @apply bg-gradient-to-br from-slate-50 to-slate-100 dark:bg-navy-950 text-slate-900 dark:text-slate-50 antialiased;
     margin: 0;
     min-height: 100vh;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss03";
     transition: background-color 0.3s ease, color 0.3s ease;
-    letter-spacing: -0.011em;
+    letter-spacing: -0.006em;
+    line-height: 1.5;
   }
 
   #root {
@@ -39,7 +42,20 @@
   /* Enhanced text contrast */
   h1, h2, h3, h4, h5, h6 {
     @apply text-slate-950 dark:text-white;
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+  }
+
+  h4, h5, h6 {
     font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  /* Tabular numerals keep amounts, counts, and dates aligned in tables and stat tiles */
+  table, .tabular-nums {
+    font-variant-numeric: tabular-nums;
   }
 
   strong, b {
