@@ -15,12 +15,6 @@ export async function getProjectDetail(id) {
   return data
 }
 
-export async function getJobs(jobIds = null) {
-  const params = jobIds ? { jobIds: jobIds.join(',') } : {}
-  const { data } = await api.get('/projects/jobs', { params })
-  return data
-}
-
 export async function analyzeProject(id, profileId = null) {
   const body = profileId ? { profileId } : {}
   const { data } = await api.post(`/projects/${id}/analyze`, body)

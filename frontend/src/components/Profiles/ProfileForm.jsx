@@ -38,7 +38,6 @@ const REGIONS = [
 const INITIAL_STATE = {
   name: '',
   searchKeywords: '',
-  jobIds: '',
   budgetMinFixed: '',
   budgetMaxFixed: '',
   budgetMinHourly: '',
@@ -83,7 +82,6 @@ export default function ProfileForm({ profile = null, onSave, onCancel, saving =
       setForm({
         name: profile.name || '',
         searchKeywords: profile.searchKeywords || '',
-        jobIds: profile.jobIds || '',
         budgetMinFixed: profile.budgetMinFixed != null ? String(profile.budgetMinFixed) : '',
         budgetMaxFixed: profile.budgetMaxFixed != null ? String(profile.budgetMaxFixed) : '',
         budgetMinHourly: profile.budgetMinHourly != null ? String(profile.budgetMinHourly) : '',
@@ -180,10 +178,6 @@ export default function ProfileForm({ profile = null, onSave, onCancel, saving =
           <div>
             <label className={labelClass}>Keywords (comma-separated)</label>
             <input type="text" value={form.searchKeywords} onChange={set('searchKeywords')} className={inputClass} placeholder="react, node, shopify" />
-          </div>
-          <div>
-            <label className={labelClass}>Job IDs (comma-separated)</label>
-            <input type="text" value={form.jobIds} onChange={set('jobIds')} className={inputClass} placeholder="3, 17, 120" />
           </div>
           <div>
             <label className={labelClass}>Project Type</label>
