@@ -1,0 +1,15 @@
+node_modules
+.env
+.env.production
+.claude
+nul
+backend/prisma/dev.db
+backend/prisma/dev.db-journal
+backend/prisma/dev.db-shm
+backend/prisma/dev.db-wal
+backend/userData.db
+backend/userData.db-journal
+backend/userData.db-shm
+backend/userData.db-wal
+dist/
+.DS_Store

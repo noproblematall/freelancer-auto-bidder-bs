@@ -1,0 +1,243 @@
+generator client {
+  provider      = "prisma-client-js"
+  output        = "../../node_modules/growlance-prisma"
+  binaryTargets = ["native", "darwin-arm64", "darwin", "windows", "debian-openssl-3.0.x", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            Int      @id @default(autoincrement())
+  email         String   @unique
+  passwordHash  String   @map("password_hash")
+  openaiApiKey  String?  @map("openai_api_key")
+  openaiModel   String   @default("gpt-5.4-mini") @map("openai_model")
+
+  // Bidding Settings
+  bidDelaySeconds Float   @default(10)    @map("bid_delay_seconds")
+  sealBids        Boolean @default(false) @map("seal_bids")
+
+  // Global Schedule Settings
+  scheduleEnabled   Boolean  @default(false) @map("schedule_enabled")
+  scheduleTimezone  String   @default("America/New_York") @map("schedule_timezone")
+  scheduleStartTime String?  @map("schedule_start_time")
+  scheduleEndTime   String?  @map("schedule_end_time")
+  scheduleDays      String   @default("1,2,3,4,5") @map("schedule_days")
+
+  // Freelancer API Credentials (per-user, for TOS compliance)
+  freelancerClientId     String?  @map("freelancer_client_id")
+  freelancerClientSecret String?  @map("freelancer_client_secret")
+
+  // Telegram Notification Settings
+  telegramEnabled                  Boolean   @default(false) @map("telegram_enabled")
+  telegramBidNotificationsEnabled  Boolean   @default(false) @map("telegram_bid_notifications_enabled")
+  telegramBotToken                 String?   @map("telegram_bot_token")
+  telegramChatId                   String?   @map("telegram_chat_id")
+  lastMessageCheckAt               DateTime? @map("last_message_check_at")
+
+  // Webhook Notification Settings (fires a POST on new incoming messages)
+  webhookEnabled Boolean @default(false) @map("webhook_enabled")
+  webhookUrl     String? @map("webhook_url")
+
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  freelancerToken  FreelancerToken?
+  biddingProfiles  BiddingProfile[]
+  bids             Bid[]
+  activityLogs     ActivityLog[]
+  meetings         Meeting[]
+  clients          Client[]
+  messageThreads   MessageThread[]
+
+  @@map("users")
+}
+
+model FreelancerToken {
+  id            Int      @id @default(autoincrement())
+  userId        Int      @unique @map("user_id")
+  accessToken   String   @map("access_token")
+  refreshToken  String?  @map("refresh_token")
+  tokenType     String?  @map("token_type")
+  expiresAt     DateTime @map("expires_at")
+  scopes        String?
+  freelancerUid String?  @map("freelancer_uid")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("freelancer_tokens")
+}
+
+model BiddingProfile {
+  id                  Int      @id @default(autoincrement())
+  userId              Int      @map("user_id")
+  name                String
+  isActive            Boolean  @default(false) @map("is_active")
+  // Search criteria
+  searchKeywords      String?  @map("search_keywords")
+  jobIds              String?  @map("job_ids")
+  // Budget filters by project type
+  budgetMinFixed      Float?   @map("budget_min_fixed")
+  budgetMaxFixed      Float?   @map("budget_max_fixed")
+  budgetMinHourly     Float?   @map("budget_min_hourly")
+  budgetMaxHourly     Float?   @map("budget_max_hourly")
+  projectTypes        String   @default("both") @map("project_types")
+  countries           String?
+  excludedCountries   String?  @map("excluded_countries")
+  excludedRegions     String?  @map("excluded_regions")
+  countryExceptions   String?  @map("country_exceptions")
+  excludedCurrencies  String?  @map("excluded_currencies")
+  languages           String?
+  // Bidding parameters
+  bidAmountStrategy   String   @default("auto") @map("bid_amount_strategy")
+  fixedBidAmount      Float?   @map("fixed_bid_amount")
+  fixedHourlyRate     Float?   @map("fixed_hourly_rate")
+  bidPercentage       Float?   @map("bid_percentage")
+  periodDaysStrategy  String   @default("fixed") @map("period_days_strategy")
+  defaultPeriodDays   Int      @default(7) @map("default_period_days")
+  defaultHourlyRate   Float?   @map("default_hourly_rate")
+  minPeriodDays       Int?     @map("min_period_days")
+  maxPeriodDays       Int?     @map("max_period_days")
+  milestonePercentage Int      @default(100) @map("milestone_percentage")
+  // AI settings
+  minRelevanceScore   Int      @default(70) @map("min_relevance_score")
+  proposalPrompt      String?  @map("proposal_prompt")
+  // Review-and-send: queue drafted bids as pending_review instead of auto-placing
+  reviewMode          Boolean  @default(false) @map("review_mode")
+  // Rate limiting
+  maxBidsPerHour      Int      @default(5) @map("max_bids_per_hour")
+  maxBidsPerDay       Int      @default(20) @map("max_bids_per_day")
+  // User profile context for AI
+  skillsSummary       String?  @map("skills_summary")
+  experienceSummary   String?  @map("experience_summary")
+  portfolioHighlights String?  @map("portfolio_highlights")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bids Bid[]
+
+  @@map("bidding_profiles")
+}
+
+model Project {
+  id                  Int       @id @default(autoincrement())
+  freelancerProjectId Int       @unique @map("freelancer_project_id")
+  title               String
+  description         String?
+  budgetMin           Float?    @map("budget_min")
+  budgetMax           Float?    @map("budget_max")
+  currency            String    @default("USD")
+  jobIds              String?   @map("job_ids")
+  ownerId             Int?      @map("owner_id")
+  ownerCountry        String?   @map("owner_country")
+  ownerLocation       String?   @map("owner_location")
+  bidCount            Int       @default(0) @map("bid_count")
+  timeSubmitted       DateTime? @map("time_submitted")
+  status              String    @default("active")
+  projectType         String?   @map("project_type")
+  relevanceScore      Int?      @map("relevance_score")
+  aiAnalysis          String?   @map("ai_analysis")
+  lastCheckedAt       DateTime? @map("last_checked_at")
+  discoveredAt        DateTime  @default(now()) @map("discovered_at")
+
+  bids     Bid[]
+  meetings Meeting[]
+
+  @@map("projects")
+}
+
+model Bid {
+  id                  Int       @id @default(autoincrement())
+  userId              Int       @map("user_id")
+  profileId           Int?      @map("profile_id")
+  projectId           Int       @map("project_id")
+  freelancerBidId     Int?      @map("freelancer_bid_id")
+  amount              Float
+  periodDays          Int       @map("period_days")
+  milestonePercentage Int       @default(100) @map("milestone_percentage")
+  proposalText        String    @map("proposal_text")
+  status              String    @default("pending")
+  sealed              Boolean   @default(false)
+  errorMessage        String?   @map("error_message")
+  placedAt            DateTime? @map("placed_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profile BiddingProfile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  project Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("bids")
+}
+
+model ActivityLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  action    String
+  details   String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("activity_logs")
+}
+
+model Client {
+  id                Int       @id @default(autoincrement())
+  userId            Int       @map("user_id")
+  freelancerUserId  Int       @map("freelancer_user_id")
+  displayName       String?   @map("display_name")
+  username          String?
+  country           String?
+  notes             String?
+  totalValue        Float     @default(0) @map("total_value")
+  projectCount      Int       @default(0) @map("project_count")
+  lastProjectAt     DateTime? @map("last_project_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, freelancerUserId])
+  @@map("clients")
+}
+
+model MessageThread {
+  id                      Int       @id @default(autoincrement())
+  userId                  Int       @map("user_id")
+  freelancerThreadId      Int       @map("freelancer_thread_id")
+  projectId               Int?      @map("project_id")
+  clientFreelancerId      Int?      @map("client_freelancer_id")
+  lastMessageFromClientAt DateTime? @map("last_message_from_client_at")
+  lastMessageFromMeAt     DateTime? @map("last_message_from_me_at")
+  lastMessageText         String?   @map("last_message_text")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, freelancerThreadId])
+  @@map("message_threads")
+}
+
+model Meeting {
+  id           Int       @id @default(autoincrement())
+  userId       Int       @map("user_id")
+  projectId    Int?      @map("project_id")
+  title        String
+  startTime    DateTime  @map("start_time")
+  endTime      DateTime? @map("end_time")
+  notes        String?
+  reminderSent Boolean   @default(false) @map("reminder_sent")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@map("meetings")
+}

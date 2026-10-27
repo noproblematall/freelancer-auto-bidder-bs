@@ -1,0 +1,29 @@
+{
+  "name": "growlance-marketing",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Growlance marketing / landing site",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && node scripts/prerender.mjs && node scripts/build-blog.mjs",
+    "preview": "vite preview",
+    "og": "node scripts/generate-og.mjs",
+    "a11y": "node scripts/a11y-audit.mjs"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.18",
+    "@vitejs/plugin-react": "^5.1.1",
+    "axe-core": "^4.12.0",
+    "jsdom": "^29.1.1",
+    "marked": "^14.1.4",
+    "sharp": "^0.34.5",
+    "tailwindcss": "^4.1.18",
+    "vite": "^7.3.1"
+  }
+}

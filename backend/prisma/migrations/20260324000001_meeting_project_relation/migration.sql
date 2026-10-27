@@ -1,0 +1,3 @@
+-- Add Prisma relation between Meeting and Project
+-- The project_id column already exists; this migration registers the relation with Prisma
+-- SQLite does not support adding foreign key constraints to existing tables

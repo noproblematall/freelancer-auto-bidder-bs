@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <title>Growlance — Freelancer.com AI Bidding Assistant &amp; Auto-Bidder</title>
+    <meta
+      name="description"
+      content="Growlance is a local-first AI bidding assistant and auto-bidder for Freelancer.com — it finds the right projects, drafts AI proposals, and tracks your clients using your own API keys. No subscription, no cloud, and an app with zero usage tracking."
+    />
+    <!-- Canonical: apex is primary; www.growlance.app redirects here -->
+    <link rel="canonical" href="https://growlance.app/" />
+
+    <!-- Open Graph / social -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Growlance" />
+    <meta property="og:url" content="https://growlance.app/" />
+    <meta property="og:title" content="Growlance — Freelancer.com AI Bidding Assistant & Auto-Bidder" />
+    <meta
+      property="og:description"
+      content="An AI auto-bidder for Freelancer.com: AI proposals, smart targeting, and a built-in CRM — private, on your own machine. Buy once, run forever."
+    />
+    <meta property="og:image" content="https://growlance.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Growlance — win more work, with less busywork" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Growlance — Freelancer.com AI Bidding Assistant & Auto-Bidder" />
+    <meta
+      name="twitter:description"
+      content="An AI auto-bidder for Freelancer.com: AI proposals, smart targeting, and a built-in CRM — private, on your own machine. Buy once, run forever."
+    />
+    <meta name="twitter:image" content="https://growlance.app/og-image.png" />
+
+    <!-- Structured data (JSON-LD) for rich results. Keep the FAQ entries in sync
+         with src/components/FAQ.jsx and the price in sync with src/config.js. -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://growlance.app/#organization",
+          "name": "Growlance",
+          "url": "https://growlance.app/",
+          "logo": "https://growlance.app/web-app-manifest-512x512.png",
+          "email": "support@growlance.app"
+        },
+        {
+          "@type": "SoftwareApplication",
+          "name": "Growlance",
+          "operatingSystem": "macOS, Windows, Linux",
+          "applicationCategory": "BusinessApplication",
+          "description": "Growlance is a local-first desktop app that finds the right Freelancer.com projects, drafts AI proposals, and tracks your clients — using your own API keys. No subscription, no cloud, and an app with zero usage tracking.",
+          "url": "https://growlance.app/",
+          "image": "https://growlance.app/og-image.png",
+          "publisher": { "@id": "https://growlance.app/#organization" },
+          "offers": {
+            "@type": "Offer",
+            "price": "89",
+            "priceCurrency": "USD",
+            "availability": "https://schema.org/InStock",
+            "url": "https://growlance.app/"
+          }
+        },
+        {
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "Is there a free trial?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes — a full-featured 7-day trial. Download Growlance, open it, and click \"Start 7-day free trial\" — no card and no account needed. The trial is tied to your device (one per machine); when it ends, buy once to keep going and everything you set up stays."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Do I need a subscription?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "No. Growlance is a one-time purchase — buy it once and run it forever, including free updates. The only ongoing cost is your own OpenAI usage, billed directly by OpenAI at cost with no markup from us."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "How does it pick which projects to bid on?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Two stages, all configurable — no prompt engineering. First, hard filters in your bid profile: skill categories, keywords, min/max budget (set separately for fixed-price and hourly), project type, client countries, and languages. Then everything that passes is scored 0–100 by AI against your actual skills and experience; only projects above your threshold (default 70) get a proposal drafted, and the analysis flags red flags like vague briefs."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Can I control when it bids — or keep a human in the loop?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes to both. You set budget floors per profile, hourly and daily bid caps, and a working-hours schedule — outside those, it holds back. And you can run it review-and-send: Growlance drafts the proposal, and nothing is submitted until you approve it."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Where is my data stored?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Entirely on your computer, in a local SQLite database inside your OS user-data folder. There’s no vendor cloud and no usage tracking. The app makes direct API calls to Freelancer, OpenAI, and Telegram using your own keys, plus a periodic license check to growlance.app that sends only your license key and an anonymous device id — never your data."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Is this against Freelancer.com’s rules?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Growlance is designed to be used responsibly. You connect your own Freelancer developer credentials, and you can run it as a review-and-drafting co-pilot so a human approves what gets submitted. You’re responsible for bidding only on projects you intend to deliver, in line with Freelancer’s Code of Conduct."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "What do I need to get started?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "A Freelancer.com account with a free developer app (for API access), and an OpenAI API key. The app walks you through connecting both. That’s it — no extra accounts or services."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Which operating systems are supported?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "macOS (Apple Silicon and Intel), Windows (x64), and Linux (AppImage). Your license activates one device at a time and works on any of these platforms. Switching computers? Email support@growlance.app and we’ll move it over for you."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "How do I pay?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Checkout is crypto-only. You pay in Bitcoin, a stablecoin, or another supported coin through a hosted, non-custodial payment page — funds settle straight to the seller’s own wallet and there’s no account to create. You get your download right after the payment confirms, plus a 14-day money-back guarantee (refunded in the crypto amount you paid) if it isn’t for you."
+              }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Contentsquare (Hotjar) analytics -->
+    <script src="https://t.contentsquare.net/uxa/d7049e29d4873.js" async></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

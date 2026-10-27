@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <title>Thank you — Growlance</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        font-family: 'Outfit', system-ui, sans-serif;
+        background: #12151b;
+        color: #cbd5e1;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        letter-spacing: -0.011em;
+      }
+      .card {
+        width: 100%;
+        max-width: 540px;
+        background: linear-gradient(180deg, rgba(35,42,53,.7), rgba(26,32,41,.7));
+        border: 1px solid #232a35;
+        border-radius: 20px;
+        padding: 40px 32px;
+        text-align: center;
+      }
+      .check {
+        width: 56px; height: 56px;
+        margin: 0 auto 20px;
+        border-radius: 50%;
+        background: rgba(16,185,129,.12);
+        border: 1px solid rgba(16,185,129,.3);
+        display: grid; place-items: center;
+      }
+      h1 { color: #fff; font-size: 1.6rem; font-weight: 700; }
+      p.sub { margin-top: 10px; color: #94a3b8; line-height: 1.6; }
+      .downloads { margin-top: 28px; display: grid; gap: 10px; }
+      a.dl {
+        display: flex; align-items: center; justify-content: center; gap: 8px;
+        padding: 13px 18px;
+        border-radius: 12px;
+        border: 1px solid #334e68;
+        background: rgba(26,32,41,.6);
+        color: #e2e8f0; text-decoration: none; font-weight: 600; font-size: .95rem;
+        transition: border-color .15s, background .15s;
+      }
+      a.dl:hover { border-color: #486581; background: rgba(35,42,53,.8); }
+      a.dl.primary { background: #10b981; color: #0b3b2e; border-color: #10b981; }
+      a.dl.primary:hover { background: #34d399; }
+      .note { margin-top: 22px; font-size: .8rem; color: #94a3b8; line-height: 1.6; }
+      .note a { color: #34d399; }
+      .license { margin-top: 24px; text-align: left; display: none; }
+      .license .label { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: #94a3b8; margin-bottom: 8px; }
+      .keyrow { display: flex; gap: 8px; }
+      .keyrow code {
+        flex: 1; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1.05rem;
+        letter-spacing: .04em; color: #fff; background: #12151b; border: 1px solid #334e68;
+        border-radius: 10px; padding: 12px 14px; word-break: break-all;
+      }
+      #copy {
+        border: 1px solid #334e68; background: rgba(26,32,41,.6); color: #e2e8f0;
+        border-radius: 10px; padding: 0 14px; font-weight: 600; font-size: .85rem; cursor: pointer;
+      }
+      #copy:hover { background: rgba(35,42,53,.8); }
+      .hint { margin-top: 10px; font-size: .8rem; color: #94a3b8; }
+      .state { margin-top: 20px; color: #94a3b8; }
+      .state.err { color: #fca5a5; }
+    </style>
+    <!-- No analytics on this page: it renders the license key, which must not be
+         captured by any third-party session-recording/analytics tool. -->
+  </head>
+  <body>
+    <main class="card">
+      <div class="check">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#34d399"
+             stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 6 9 17l-5-5" />
+        </svg>
+      </div>
+      <h1 id="title">Finishing up your order…</h1>
+      <p class="sub" id="sub">
+        We’re confirming your payment. Your license key will appear below as soon as
+        it’s ready — this can take a minute or two for on-chain confirmation.
+      </p>
+
+      <div class="license" id="licenseBox">
+        <div class="label">Your license key</div>
+        <div class="keyrow">
+          <code id="key"></code>
+          <button id="copy" type="button">Copy</button>
+        </div>
+        <p class="hint">
+          This key activates Growlance on <strong>one device</strong>. Switching computers
+          later? Email <a href="mailto:support@growlance.app">support@growlance.app</a> and
+          we&rsquo;ll move it over for you.
+        </p>
+      </div>
+
+      <div class="state" id="state">Confirming your payment…</div>
+
+      <div class="downloads" id="downloads" style="display: none">
+        <a class="dl primary" id="downloadBtn" href="#" target="_blank" rel="noopener">Download Growlance</a>
+      </div>
+
+      <p class="note">
+        Lost your key or didn't get it? Email
+        <a href="mailto:support@growlance.app">support@growlance.app</a> with your order
+        reference and we'll sort it out.
+        <br /><br />
+        <a href="/">← Back to growlance.app</a>
+      </p>
+    </main>
+
+    <script>
+      (function () {
+        var order = new URLSearchParams(location.search).get('order')
+        var titleEl = document.getElementById('title')
+        var subEl = document.getElementById('sub')
+        var stateEl = document.getElementById('state')
+        var boxEl = document.getElementById('licenseBox')
+        var keyEl = document.getElementById('key')
+        var dlWrap = document.getElementById('downloads')
+        var dlBtn = document.getElementById('downloadBtn')
+        var copyBtn = document.getElementById('copy')
+
+        // Strip the order ref from the address bar so it isn't leaked via history,
+        // referrer, or bookmarks. We keep it in a variable for polling.
+        if (order && window.history.replaceState) {
+          window.history.replaceState({}, document.title, location.pathname)
+        }
+
+        function info(msg) {
+          stateEl.className = 'state'
+          stateEl.textContent = msg
+        }
+        function fail(msg) {
+          titleEl.textContent = 'We hit a snag'
+          stateEl.className = 'state err'
+          stateEl.textContent = msg
+        }
+
+        if (!order) {
+          subEl.style.display = 'none'
+          fail(
+            "We couldn't find your order reference. If you just paid, check your Plisio " +
+              'receipt or email support@growlance.app.'
+          )
+          return
+        }
+
+        // Plisio's on-chain confirmation can lag the redirect by minutes, so poll
+        // the claim endpoint with backoff before giving up.
+        var attempt = 0
+        var MAX_ATTEMPTS = 40 // ~10 min at 15s
+        var DELAY_MS = 15000
+
+        function succeed(j) {
+          titleEl.textContent = 'Payment received — thank you!'
+          subEl.textContent =
+            'Here’s your license key — you’ll enter it the first time you open Growlance. Keep it somewhere safe.'
+          stateEl.style.display = 'none'
+          keyEl.textContent = j.key
+          boxEl.style.display = 'block'
+          if (j.download) {
+            dlBtn.href = j.download
+            dlWrap.style.display = 'grid'
+          }
+        }
+
+        function poll() {
+          attempt++
+          fetch('/api/license/claim?order=' + encodeURIComponent(order))
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { ok: r.ok, j: j }
+              })
+            })
+            .then(function (res) {
+              if (res.ok && res.j.ok) return succeed(res.j)
+
+              if (res.j && res.j.error === 'payment_not_confirmed') {
+                if (attempt >= MAX_ATTEMPTS) {
+                  fail(
+                    'Your payment is taking longer than usual to confirm on-chain. It’s not lost — ' +
+                      'email support@growlance.app and we’ll send your key as soon as it clears.'
+                  )
+                  return
+                }
+                info('Waiting for on-chain confirmation… (checking again automatically)')
+                setTimeout(poll, DELAY_MS)
+                return
+              }
+
+              fail(
+                "We couldn't retrieve your license automatically. Email " +
+                  'support@growlance.app with your order reference and we’ll send it over.'
+              )
+            })
+            .catch(function () {
+              if (attempt >= MAX_ATTEMPTS) {
+                fail('Could not reach the license server. Please refresh, or email support@growlance.app.')
+                return
+              }
+              setTimeout(poll, DELAY_MS)
+            })
+        }
+
+        poll()
+
+        copyBtn.addEventListener('click', function () {
+          navigator.clipboard.writeText(keyEl.textContent).then(function () {
+            copyBtn.textContent = 'Copied'
+            setTimeout(function () {
+              copyBtn.textContent = 'Copy'
+            }, 1500)
+          })
+        })
+      })()
+    </script>
+  </body>
+</html>

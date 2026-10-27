@@ -1,0 +1,142 @@
+@import "tailwindcss";
+
+@theme {
+  /* Brand navy — matched to the Growlance app */
+  --color-navy-50: #f0f4f8;
+  --color-navy-100: #d9e2ec;
+  --color-navy-200: #bcccdc;
+  --color-navy-300: #9fb3c8;
+  --color-navy-400: #829ab1;
+  --color-navy-500: #627d98;
+  --color-navy-600: #486581;
+  --color-navy-700: #334e68;
+  --color-navy-800: #232a35;
+  --color-navy-900: #1a2029;
+  --color-navy-950: #12151b;
+
+  /* Emerald accent — a nod to "Grow"lance */
+  --color-accent-400: #34d399;
+  --color-accent-500: #10b981;
+  --color-accent-600: #059669;
+
+  --font-sans: 'Outfit', ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    overflow-x: hidden;
+  }
+
+  body {
+    @apply bg-navy-950 text-slate-300 antialiased;
+    margin: 0;
+    min-height: 100vh;
+    overflow-x: hidden;
+    max-width: 100%;
+    font-family: var(--font-sans);
+    letter-spacing: -0.011em;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply text-white;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  /* Pointer cursor on all interactive controls (a11y affordance) */
+  a[href],
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  summary,
+  label[for] {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
+  /* Visible keyboard focus for everything focusable (WCAG 2.4.7) */
+  :focus-visible {
+    outline: 2px solid var(--color-accent-400);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  /* Don't show the ring for mouse/touch activation, only keyboard */
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  /* Respect users who prefer reduced motion (WCAG 2.3.3) */
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* Visually-hidden utility that becomes visible on focus (skip link) */
+  .skip-link {
+    position: absolute;
+    left: 1rem;
+    top: -3rem;
+    z-index: 200;
+    border-radius: 0.5rem;
+    background: var(--color-accent-500);
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-navy-950);
+    transition: top 0.15s ease;
+  }
+  .skip-link:focus {
+    top: 1rem;
+  }
+
+  * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: rgba(52, 211, 153, 0.25);
+  }
+}
+
+@layer utilities {
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate-fadeUp {
+    animation: fadeUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* Radial glow used behind the hero */
+  .hero-glow {
+    background:
+      radial-gradient(60% 50% at 50% 0%, rgba(16, 185, 129, 0.16) 0%, rgba(16, 185, 129, 0) 70%),
+      radial-gradient(40% 40% at 80% 10%, rgba(72, 101, 129, 0.25) 0%, rgba(72, 101, 129, 0) 70%);
+  }
+
+  .card-gradient {
+    background: linear-gradient(180deg, rgba(35, 42, 53, 0.7) 0%, rgba(26, 32, 41, 0.7) 100%);
+  }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-navy-700 rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-navy-600; }
+}

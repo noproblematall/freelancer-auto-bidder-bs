@@ -1,0 +1,116 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'          # Trigger on version tags: v1.0.0, v1.2.3, etc.
+  workflow_dispatch:  # Allow manual runs from GitHub UI
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false   # one platform failing must not cancel the others
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+            script: dist:mac
+          - os: windows-latest
+            platform: win
+            script: dist:win
+          - os: ubuntu-latest
+            platform: linux
+            script: dist:linux
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      # Skip postinstall in CI: electron-rebuild is for local dev only.
+      # electron-builder handles native rebuilds per-arch during packaging.
+      # prisma generate runs in the next step.
+      - name: Install root dependencies
+        run: npm install --ignore-scripts
+
+      - name: Generate Prisma client
+        run: npx prisma generate --schema=backend/prisma/schema.prisma
+
+      - name: Install frontend dependencies
+        run: npm install
+        working-directory: frontend
+
+      # On Windows, stale node_modules can cause EPERM errors during npm cleanup.
+      - name: Clean backend node_modules (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Remove-Item -Recurse -Force backend\node_modules -ErrorAction SilentlyContinue
+
+      - name: Install backend dependencies
+        run: npm install
+        working-directory: backend
+
+      - name: Build & package
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npm run ${{ matrix.script }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Growlance-${{ matrix.platform }}
+          path: |
+            dist/electron/*.dmg
+            dist/electron/*.zip
+            dist/electron/*.exe
+            dist/electron/*.AppImage
+            dist/electron/*.deb
+          if-no-files-found: ignore
+          retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    # Publish whatever built — don't let one failed platform (e.g. macOS running
+    # out of free-tier minutes) block the release. `always()` runs this even if a
+    # build leg failed; we still require a tag push. The release is only created
+    # if at least one artifact was downloaded (see the guard step below).
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/') }}
+    permissions:
+      contents: write   # Required to create a GitHub Release and upload assets
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      # Skip the release entirely if no platform produced an installer, so we
+      # never publish an empty release.
+      - name: Check for artifacts
+        id: check
+        shell: bash
+        run: |
+          if find artifacts -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.zip' \) | grep -q .; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "No installers were produced by any build leg; skipping release."
+          fi
+
+      - name: Create GitHub Release
+        if: steps.check.outputs.found == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,12 @@
+CREATE TABLE meetings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  project_id INTEGER,
+  title TEXT NOT NULL,
+  start_time DATETIME NOT NULL,
+  end_time DATETIME,
+  notes TEXT,
+  reminder_sent BOOLEAN NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);

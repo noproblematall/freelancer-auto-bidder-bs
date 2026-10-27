@@ -1,0 +1,31 @@
+node_modules
+.git
+.gitignore
+*.md
+!ChatGPT-prompt.md
+.env
+.env.*
+.vscode
+.idea
+*.log
+dist
+build
+coverage
+.DS_Store
+Thumbs.db
+.claude
+
+# Exclude frontend when building backend
+frontend/
+
+# Exclude test files
+**/tests/
+**/*.test.js
+**/*.test.jsx
+**/vitest.config.js
+
+# Exclude development databases
+backend/prisma/dev.db
+backend/prisma/dev.db-journal
+backend/prisma/test.db
+backend/prisma/test.db-journal

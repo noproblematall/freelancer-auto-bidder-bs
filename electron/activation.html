@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:;" />
+    <title>Activate Growlance</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      :root { color-scheme: dark; }
+      body {
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        background: #12151b;
+        color: #cbd5e1;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 28px;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      .card { width: 100%; max-width: 440px; text-align: center; }
+      .mark { width: 56px; height: 56px; margin: 0 auto 18px; }
+      h1 { color: #fff; font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; }
+      p.sub { margin-top: 10px; color: #94a3b8; font-size: 0.92rem; line-height: 1.6; }
+      form { margin-top: 26px; text-align: left; }
+      label { display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; margin-bottom: 8px; }
+      input {
+        width: 100%; padding: 14px 16px; border-radius: 12px;
+        border: 1px solid #334e68; background: #1a2029; color: #fff;
+        font-family: ui-monospace, Menlo, Consolas, monospace;
+        font-size: 1.05rem; letter-spacing: 0.06em; text-align: center; text-transform: uppercase;
+        -webkit-user-select: text; user-select: text;
+      }
+      input:focus { outline: 2px solid #34d399; outline-offset: 2px; border-color: #34d399; }
+      button {
+        width: 100%; margin-top: 14px; padding: 14px 16px; border: none; border-radius: 12px;
+        background: #10b981; color: #0b3b2e; font-weight: 700; font-size: 0.98rem; cursor: pointer;
+        transition: background 0.15s;
+      }
+      button:hover:not(:disabled) { background: #34d399; }
+      button:disabled { opacity: 0.6; cursor: default; }
+      .divider {
+        display: flex; align-items: center; gap: 12px; margin-top: 22px;
+        color: #64748b; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em;
+      }
+      .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: #232a35; }
+      button.ghost {
+        background: transparent; border: 1px solid #334e68; color: #cbd5e1; font-weight: 600;
+      }
+      button.ghost:hover:not(:disabled) { background: #1a2029; border-color: #34d399; color: #fff; }
+      .msg { margin-top: 16px; font-size: 0.86rem; line-height: 1.5; min-height: 1.2em; }
+      .msg.err { color: #fca5a5; }
+      .msg.ok { color: #34d399; }
+      .links { margin-top: 26px; font-size: 0.8rem; color: #64748b; line-height: 1.8; }
+      .links a { color: #34d399; text-decoration: none; cursor: pointer; }
+      .links a:hover { text-decoration: underline; }
+      /* macOS uses hiddenInset title bars — without a drag region the window
+         can't be moved. Harmless elsewhere. */
+      .dragbar { position: fixed; top: 0; left: 0; right: 0; height: 32px; -webkit-app-region: drag; }
+    </style>
+  </head>
+  <body>
+    <div class="dragbar"></div>
+    <main class="card">
+      <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+        <path d="M16 7l7 4v6c0 4.2-2.9 7-7 8-4.1-1-7-3.8-7-8v-6l7-4z" fill="none" stroke="#34d399" stroke-width="2" stroke-linejoin="round" />
+        <path d="M12.5 16.2l2.6 2.6 4.6-5.2" fill="none" stroke="#34d399" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+      <h1>Activate Growlance</h1>
+      <p class="sub">Enter the license key from your purchase — or try Growlance free for 7 days.</p>
+
+      <form id="form" autocomplete="off">
+        <label for="key">License key</label>
+        <input id="key" name="key" placeholder="GROW-XXXXX-XXXXX-XXXXX-XXXXX" spellcheck="false" autocapitalize="characters" />
+        <button id="btn" type="submit">Activate</button>
+        <div class="divider">or</div>
+        <button id="trial" class="ghost" type="button">Start 7-day free trial</button>
+        <div class="msg" id="msg"></div>
+      </form>
+
+      <p class="links">
+        <a id="buy">Don’t have a key? Get Growlance →</a><br />
+        Need help? <a id="support">support@growlance.app</a>
+      </p>
+    </main>
+
+    <script>
+      var form = document.getElementById('form')
+      var input = document.getElementById('key')
+      var btn = document.getElementById('btn')
+      var trialBtn = document.getElementById('trial')
+      var msg = document.getElementById('msg')
+
+      function show(text, cls) {
+        msg.className = 'msg ' + (cls || '')
+        msg.textContent = text || ''
+      }
+
+      function setBusy(busy) {
+        btn.disabled = busy
+        trialBtn.disabled = busy
+        input.disabled = busy
+      }
+
+      form.addEventListener('submit', async function (e) {
+        e.preventDefault()
+        var key = input.value.trim()
+        if (!key) {
+          show('Enter your license key.', 'err')
+          return
+        }
+        setBusy(true)
+        show('Activating…')
+        try {
+          var res = await window.electron.license.activate(key)
+          if (res && res.ok) {
+            show('Activated! Restarting Growlance…', 'ok')
+            setTimeout(function () { window.electron.app.relaunch() }, 1200)
+          } else {
+            setBusy(false)
+            show((res && res.message) || 'Activation failed. Please try again.', 'err')
+          }
+        } catch (e) {
+          // An unexpected throw (e.g. saving the license file failed) must never
+          // leave the UI wedged with disabled buttons.
+          setBusy(false)
+          show('Something went wrong. Please try again, or contact support@growlance.app.', 'err')
+        }
+      })
+
+      trialBtn.addEventListener('click', async function () {
+        setBusy(true)
+        show('Starting your free trial…')
+        try {
+          var res = await window.electron.license.startTrial()
+          if (res && res.ok) {
+            show('Trial started — enjoy 7 days of Growlance! Restarting…', 'ok')
+            setTimeout(function () { window.electron.app.relaunch() }, 1200)
+          } else {
+            setBusy(false)
+            show((res && res.message) || 'Could not start the trial. Please try again.', 'err')
+          }
+        } catch (e) {
+          setBusy(false)
+          show('Something went wrong. Please try again, or contact support@growlance.app.', 'err')
+        }
+      })
+
+      document.getElementById('buy').addEventListener('click', function () {
+        window.electron.app.openExternal('https://growlance.app/#pricing')
+      })
+      document.getElementById('support').addEventListener('click', function () {
+        window.electron.app.openExternal('mailto:support@growlance.app')
+      })
+
+      input.focus()
+    </script>
+  </body>
+</html>
