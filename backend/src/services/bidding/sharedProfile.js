@@ -55,9 +55,11 @@ function normalizeList(value, { lowercase = false } = {}) {
 }
 
 // Parse the raw DB value (JSON string or null) into a fully-populated object.
+// New accounts are seeded with defaults by prisma/seed.js; NULL here means
+// nothing is configured.
 function parseSharedProfile(raw) {
   const out = emptySharedProfile();
-  if (!raw) return out;
+  if (raw == null) return out;
   let parsed;
   try { parsed = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch (e) {
     logger.warn(`Shared profile: failed to parse stored JSON: ${e.message}`);
@@ -77,10 +79,9 @@ function parseSharedProfile(raw) {
 }
 
 // Build the JSON string to store from an API payload. Unknown keys are dropped.
+// Always a document, so an explicitly emptied configuration is kept as such.
 function serializeSharedProfile(input) {
-  const normalized = parseSharedProfile(input || {});
-  const hasContent = ALL_FIELDS.some(f => Array.isArray(normalized[f]) ? normalized[f].length > 0 : !!normalized[f]);
-  return hasContent ? JSON.stringify(normalized) : null;
+  return JSON.stringify(parseSharedProfile(input || {}));
 }
 
 function isEmptySharedProfile(shared) {

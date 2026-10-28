@@ -229,9 +229,9 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
     try { filters.countries = JSON.parse(profile.countries); } catch (e) { logger.warn(`Profile "${profile.name}": failed to parse countries: ${e.message}`); }
   }
   if (profile.languages) {
-    // languages is stored as a plain string (e.g. "English"), not JSON
-    const lang = profile.languages.trim();
-    if (lang) filters.languages = [lang];
+    // languages is a comma-separated string of codes (e.g. "en, es"), not JSON
+    const langs = profile.languages.split(',').map(l => l.trim().toLowerCase()).filter(Boolean);
+    if (langs.length) filters.languages = langs;
   }
 
   let searchResult;
