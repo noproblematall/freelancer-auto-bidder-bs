@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useProfiles } from '../hooks/useProfiles'
 import { useConfirm } from '../components/ConfirmDialog'
-import SharedSettingsCard from '../components/Profiles/SharedSettingsCard'
+import JobFiltersCard from '../components/Profiles/JobFiltersCard'
 
 const STRATEGY_LABELS = {
   auto: 'AI Auto',
@@ -122,8 +122,8 @@ export default function ProfilesPage() {
         </div>
       )}
 
-      {/* Settings applied to every profile */}
-      {!loading && <SharedSettingsCard />}
+      {/* Search filters applied to every profile */}
+      {!loading && <JobFiltersCard />}
 
       {/* Profile Cards */}
       {!loading && profiles.length > 0 && (

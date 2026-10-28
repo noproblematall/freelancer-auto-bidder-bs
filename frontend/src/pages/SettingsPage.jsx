@@ -7,6 +7,7 @@ import api from '../services/api'
 const SECTIONS = [
   { key: 'freelancer', label: 'Freelancer.com' },
   { key: 'openai', label: 'OpenAI' },
+  { key: 'profile', label: 'Freelancer Profile' },
   { key: 'autobidding', label: 'Auto-Bidding' },
   { key: 'schedule', label: 'Schedule' },
   { key: 'telegram', label: 'Telegram' },
@@ -33,6 +34,12 @@ export default function SettingsPage() {
   const [maxBidsPerHour, setMaxBidsPerHour] = useState(user?.maxBidsPerHour ?? 8)
   const [maxBidsPerDay, setMaxBidsPerDay] = useState(user?.maxBidsPerDay ?? 80)
   const [rateLimitMessage, setRateLimitMessage] = useState(null)
+  const [reviewMode, setReviewMode] = useState(user?.reviewMode || false)
+  const [skillsSummary, setSkillsSummary] = useState(user?.skillsSummary || '')
+  const [experienceSummary, setExperienceSummary] = useState(user?.experienceSummary || '')
+  const [portfolioHighlights, setPortfolioHighlights] = useState(user?.portfolioHighlights || '')
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileMessage, setProfileMessage] = useState(null)
   const [openaiTesting, setOpenaiTesting] = useState(false)
   const [openaiTestMessage, setOpenaiTestMessage] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -104,6 +111,10 @@ export default function SettingsPage() {
     }
     if (user?.maxBidsPerHour !== undefined) setMaxBidsPerHour(user.maxBidsPerHour)
     if (user?.maxBidsPerDay !== undefined) setMaxBidsPerDay(user.maxBidsPerDay)
+    if (user?.reviewMode !== undefined) setReviewMode(user.reviewMode)
+    if (user?.skillsSummary !== undefined) setSkillsSummary(user.skillsSummary || '')
+    if (user?.experienceSummary !== undefined) setExperienceSummary(user.experienceSummary || '')
+    if (user?.portfolioHighlights !== undefined) setPortfolioHighlights(user.portfolioHighlights || '')
     if (user?.schedule) {
       setScheduleEnabled(user.schedule.enabled || false)
       setTimezone(user.schedule.timezone || 'America/New_York')
@@ -225,6 +236,21 @@ export default function SettingsPage() {
       setOpenaiTestMessage({ type: 'error', text: err.response?.data?.error || 'Key test failed.' })
     } finally {
       setOpenaiTesting(false)
+    }
+  }
+
+  async function handleSaveProfileContext(e) {
+    e.preventDefault()
+    setProfileSaving(true)
+    setProfileMessage(null)
+    try {
+      await updateSettings({ skillsSummary, experienceSummary, portfolioHighlights })
+      setProfileMessage({ type: 'success', text: 'Saved.' })
+      setTimeout(() => setProfileMessage(null), 2500)
+    } catch (err) {
+      setProfileMessage({ type: 'error', text: err.response?.data?.error || 'Failed to save — try again.' })
+    } finally {
+      setProfileSaving(false)
     }
   }
 
@@ -827,6 +853,56 @@ export default function SettingsPage() {
           </div>
           )}
 
+          {/* Freelancer Profile (AI context) */}
+          {activeSection === 'profile' && (
+          <div className="bg-white dark:bg-navy-800/90 rounded-xl border border-slate-200 dark:border-white/6 shadow-lg dark:shadow-2xl dark:shadow-black/50 overflow-hidden">
+            <div className="px-6 py-5 border-b border-slate-100 dark:border-white/8">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-sm">
+                  <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold text-navy-950 dark:text-white">Freelancer Profile</h2>
+                  <p className="text-sm text-slate-700 dark:text-slate-400">What the AI knows about you when scoring projects and writing proposals.</p>
+                </div>
+              </div>
+            </div>
+            <form onSubmit={handleSaveProfileContext} className="p-6 space-y-4">
+              <div>
+                <label htmlFor="skills-summary" className="block text-xs font-medium text-slate-700 dark:text-slate-200 mb-1.5">Skills Summary</label>
+                <textarea id="skills-summary" rows={3} value={skillsSummary} onChange={(e) => setSkillsSummary(e.target.value)} className="w-full px-3 py-2 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500/20 focus:border-navy-500 transition-colors placeholder:text-slate-400 dark:placeholder:text-slate-600" placeholder="Senior full-stack developer, 10 years React/Node..." />
+              </div>
+              <div>
+                <label htmlFor="experience-summary" className="block text-xs font-medium text-slate-700 dark:text-slate-200 mb-1.5">Experience Summary</label>
+                <textarea id="experience-summary" rows={3} value={experienceSummary} onChange={(e) => setExperienceSummary(e.target.value)} className="w-full px-3 py-2 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500/20 focus:border-navy-500 transition-colors placeholder:text-slate-400 dark:placeholder:text-slate-600" placeholder="Describe your past work and expertise..." />
+              </div>
+              <div>
+                <label htmlFor="portfolio-highlights" className="block text-xs font-medium text-slate-700 dark:text-slate-200 mb-1.5">Portfolio Highlights</label>
+                <textarea id="portfolio-highlights" rows={3} value={portfolioHighlights} onChange={(e) => setPortfolioHighlights(e.target.value)} className="w-full px-3 py-2 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500/20 focus:border-navy-500 transition-colors placeholder:text-slate-400 dark:placeholder:text-slate-600" placeholder="Notable projects or clients to mention in bids..." />
+              </div>
+              <p className="text-xs text-slate-700 dark:text-slate-200">Used for every bid profile. Leave blank and the AI falls back to a generic developer profile.</p>
+              <div className="flex items-center gap-3">
+                <button
+                  type="submit"
+                  disabled={profileSaving}
+                  className="px-4 py-2 text-sm font-medium text-white dark:text-navy-950 bg-navy-900 dark:bg-emerald-400 rounded-lg hover:bg-navy-800 dark:hover:bg-emerald-500 transition-colors shadow-sm disabled:opacity-50"
+                >
+                  {profileSaving ? 'Saving...' : 'Save Profile'}
+                </button>
+                {profileMessage && (
+                  <span className={`text-xs font-medium ${
+                    profileMessage.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                  }`}>
+                    {profileMessage.text}
+                  </span>
+                )}
+              </div>
+            </form>
+          </div>
+          )}
+
           {/* Telegram Notifications */}
           {activeSection === 'telegram' && (
           <div className="bg-white dark:bg-navy-800/90 rounded-xl border border-slate-200 dark:border-white/6 shadow-lg dark:shadow-2xl dark:shadow-black/50 overflow-hidden">
@@ -1241,6 +1317,42 @@ export default function SettingsPage() {
                     <span
                       className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform mt-0.5 ${
                         sealBids ? 'translate-x-5' : 'translate-x-0.5'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-lg bg-slate-50 dark:bg-navy-900/50 border border-slate-200 dark:border-white/8">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <label htmlFor="review-mode" className="block text-sm font-medium text-navy-950 dark:text-white">
+                      Review before sending
+                    </label>
+                    <p className="text-xs text-slate-700 dark:text-slate-200 mt-1">
+                      {reviewMode
+                        ? 'Drafts from every profile are queued on the Bids page for you to edit and approve — nothing is sent automatically.'
+                        : 'Qualified bids from every profile are placed automatically, within your rate limits and schedule.'}
+                    </p>
+                  </div>
+                  <button
+                    id="review-mode"
+                    type="button"
+                    role="switch"
+                    aria-checked={reviewMode}
+                    onClick={async () => {
+                      const next = !reviewMode
+                      setReviewMode(next)
+                      try { await updateSettings({ reviewMode: next }) }
+                      catch { setReviewMode(!next) }
+                    }}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors ${
+                      reviewMode ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-navy-700'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform mt-0.5 ${
+                        reviewMode ? 'translate-x-5' : 'translate-x-0.5'
                       }`}
                     />
                   </button>

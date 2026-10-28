@@ -2,12 +2,18 @@ const express = require('express');
 const prisma = require('../config/database');
 const authMiddleware = require('../middleware/auth');
 const { runProfilePipeline } = require('../services/bidding/engine');
-const { loadSharedProfile, serializeSharedProfile, parseSharedProfile, ALL_FIELDS } = require('../services/bidding/sharedProfile');
 const logger = require('../utils/logger');
 
 const router = express.Router();
 
 router.use(authMiddleware);
+
+// Every /:id route expects a numeric profile id. Anything else (e.g. a stale
+// link to a removed sub-path) is a plain 404, not a Prisma error.
+router.param('id', (req, res, next, id) => {
+  if (!/^\d+$/.test(id)) return res.status(404).json({ error: 'Profile not found' });
+  next();
+});
 
 // Helper function to convert comma-separated string to JSON array string
 function parseCommaSeparated(str) {
@@ -211,57 +217,6 @@ router.post('/', async (req, res, next) => {
 
     logger.info(`Profile created: "${profile.name}" (id: ${profile.id})`);
     res.status(201).json({ profile: formatProfile(profile, 0) });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// GET /api/profiles/shared — Settings applied to every profile (targeting + AI context)
-router.get('/shared', async (req, res, next) => {
-  try {
-    res.json({ shared: await loadSharedProfile(req.userId) });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// PUT /api/profiles/shared — Replace the shared settings
-router.put('/shared', async (req, res, next) => {
-  try {
-    const body = req.body || {};
-    for (const f of ['skillsSummary', 'experienceSummary', 'portfolioHighlights', 'languages']) {
-      if (body[f] != null && typeof body[f] !== 'string') {
-        return res.status(400).json({ error: `${f} must be a string` });
-      }
-    }
-    if (body.reviewMode != null && typeof body.reviewMode !== 'boolean') {
-      return res.status(400).json({ error: 'reviewMode must be a boolean' });
-    }
-    for (const f of ['countries', 'excludedCountries', 'excludedRegions', 'countryExceptions', 'excludedCurrencies']) {
-      if (body[f] != null && !Array.isArray(body[f]) && typeof body[f] !== 'string') {
-        return res.status(400).json({ error: `${f} must be an array` });
-      }
-    }
-
-    const payload = {};
-    for (const f of ALL_FIELDS) if (body[f] !== undefined) payload[f] = body[f];
-
-    const user = await prisma.user.update({
-      where: { id: req.userId },
-      data: { sharedProfile: serializeSharedProfile(payload) },
-      select: { sharedProfile: true },
-    });
-
-    await prisma.activityLog.create({
-      data: {
-        userId: req.userId,
-        action: 'shared_profile_updated',
-        details: JSON.stringify({ fields: Object.keys(payload) }),
-      },
-    });
-
-    logger.info('Shared profile settings updated');
-    res.json({ shared: parseSharedProfile(user.sharedProfile) });
   } catch (err) {
     next(err);
   }

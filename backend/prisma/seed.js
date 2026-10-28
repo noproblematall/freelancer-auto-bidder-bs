@@ -4,14 +4,15 @@
 //
 // The same defaults are used by the app when a new account is created, so a
 // fresh user starts with these rows without a separate seeding step. Existing
-// installs are back-filled once by the 20261027000004_seed_shared_profile_defaults
-// migration, which carries a snapshot of DEFAULT_SHARED_PROFILE.
+// installs were back-filled by the 20261027000004..6 migrations, which carry
+// snapshots of these values.
 
-// Shared profile settings (users.shared_profile) for a new account: skip the
-// regions and countries where project budgets are rarely worth a bid. The
-// shape mirrors services/bidding/sharedProfile.js. Region keys come from
-// utils/regions.js; country codes are ISO 3166-1 alpha-2.
-const DEFAULT_SHARED_PROFILE = Object.freeze({
+// Job filters (users.job_filters) for a new account: skip the regions,
+// countries and currencies where project budgets are rarely worth a bid, and
+// search in English and Spanish. The shape mirrors services/bidding/jobFilters.js.
+// Region keys come from utils/regions.js; country codes are ISO 3166-1 alpha-2;
+// currency codes are ISO 4217.
+const DEFAULT_JOB_FILTERS = Object.freeze({
   excludedRegions: [
     'south_asia', 'southeast_asia', 'central_asia',
     'north_africa', 'west_africa', 'east_africa', 'central_africa', 'southern_africa',
@@ -27,21 +28,17 @@ const DEFAULT_SHARED_PROFILE = Object.freeze({
   countries: [],
   // Search languages (comma-separated codes); blank would mean all languages
   languages: 'en, es',
-  skillsSummary: '',
-  experienceSummary: '',
-  portfolioHighlights: '',
-  reviewMode: false,
 });
 
-function defaultSharedProfileJson() {
-  return JSON.stringify(DEFAULT_SHARED_PROFILE);
+function defaultJobFiltersJson() {
+  return JSON.stringify(DEFAULT_JOB_FILTERS);
 }
 
-// Idempotent: only accounts that have never saved shared settings are touched.
-async function seedSharedProfileDefaults(prisma) {
+// Idempotent: only accounts that have never saved job filters are touched.
+async function seedJobFilterDefaults(prisma) {
   const result = await prisma.user.updateMany({
-    where: { sharedProfile: null },
-    data: { sharedProfile: defaultSharedProfileJson() },
+    where: { jobFilters: null },
+    data: { jobFilters: defaultJobFiltersJson() },
   });
   return result.count;
 }
@@ -49,8 +46,8 @@ async function seedSharedProfileDefaults(prisma) {
 async function main() {
   const prisma = require('../src/config/database');
   try {
-    const seeded = await seedSharedProfileDefaults(prisma);
-    console.log(`Seed: shared profile defaults applied to ${seeded} account(s)`);
+    const seeded = await seedJobFilterDefaults(prisma);
+    console.log(`Seed: job filter defaults applied to ${seeded} account(s)`);
   } finally {
     await prisma.$disconnect();
   }
@@ -63,4 +60,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { DEFAULT_SHARED_PROFILE, defaultSharedProfileJson, seedSharedProfileDefaults };
+module.exports = { DEFAULT_JOB_FILTERS, defaultJobFiltersJson, seedJobFilterDefaults };

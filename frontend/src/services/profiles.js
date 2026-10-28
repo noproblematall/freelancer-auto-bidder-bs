@@ -39,13 +39,3 @@ export async function deactivateProfile(id) {
   const { data } = await api.post(`/profiles/${id}/deactivate`)
   return data
 }
-
-export async function getSharedProfile() {
-  const { data } = await api.get('/profiles/shared')
-  return data
-}
-
-export async function updateSharedProfile(shared) {
-  const { data } = await api.put('/profiles/shared', shared)
-  return data
-}

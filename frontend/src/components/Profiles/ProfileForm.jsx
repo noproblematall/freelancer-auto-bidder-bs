@@ -105,8 +105,10 @@ export default function ProfileForm({ profile = null, onSave, onCancel, saving =
         <label className={labelClass}>Profile Name *</label>
         <input type="text" value={form.name} onChange={set('name')} className={inputClass} placeholder="e.g. React/Node Projects" />
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-3">
-          Countries, regions, currencies, languages, and your freelancer profile apply to every profile and are managed in{' '}
-          <Link to="/profiles/shared" className="font-medium text-navy-700 dark:text-emerald-400 hover:underline">Shared Settings</Link>.
+          Client countries, regions, currencies, and languages are filtered for every profile under{' '}
+          <Link to="/job-filters" className="font-medium text-navy-700 dark:text-emerald-400 hover:underline">Job Filters</Link>.
+          Review mode and your freelancer profile for the AI live in{' '}
+          <Link to="/settings?section=autobidding" className="font-medium text-navy-700 dark:text-emerald-400 hover:underline">Settings</Link>.
         </p>
       </div>
 

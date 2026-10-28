@@ -10,7 +10,7 @@ const { createFreelancerClient } = require('../services/freelancer/client');
 const { getSelf } = require('../services/freelancer/users');
 const { isValidWebhookUrl } = require('../services/notifications/webhook');
 const logger = require('../utils/logger');
-const { defaultSharedProfileJson } = require('../../prisma/seed');
+const { defaultJobFiltersJson } = require('../../prisma/seed');
 
 const router = express.Router();
 
@@ -32,7 +32,7 @@ router.post('/register', async (req, res, next) => {
 
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await prisma.user.create({
-      data: { email, passwordHash, sharedProfile: defaultSharedProfileJson() },
+      data: { email, passwordHash, jobFilters: defaultJobFiltersJson() },
     });
 
     const token = jwt.sign({ userId: user.id }, env.jwtSecret, { expiresIn: '7d' });
@@ -64,7 +64,7 @@ router.post('/local-session', async (req, res, next) => {
       // and keeps /login unusable for this account by guessing.
       const passwordHash = await bcrypt.hash(require('crypto').randomBytes(32).toString('hex'), 12);
       user = await prisma.user.create({
-        data: { email: 'local@growlance.app', passwordHash, sharedProfile: defaultSharedProfileJson() },
+        data: { email: 'local@growlance.app', passwordHash, jobFilters: defaultJobFiltersJson() },
       });
       logger.info('Local user created for silent session');
     }
@@ -368,6 +368,10 @@ router.get('/status', authMiddleware, async (req, res, next) => {
         sealBids: true,
         maxBidsPerHour: true,
         maxBidsPerDay: true,
+        reviewMode: true,
+        skillsSummary: true,
+        experienceSummary: true,
+        portfolioHighlights: true,
         scheduleEnabled: true,
         scheduleTimezone: true,
         scheduleStartTime: true,
@@ -404,6 +408,10 @@ router.get('/status', authMiddleware, async (req, res, next) => {
         sealBids: user.sealBids,
         maxBidsPerHour: user.maxBidsPerHour,
         maxBidsPerDay: user.maxBidsPerDay,
+        reviewMode: user.reviewMode,
+        skillsSummary: user.skillsSummary || '',
+        experienceSummary: user.experienceSummary || '',
+        portfolioHighlights: user.portfolioHighlights || '',
         freelancerApiConfigured: !!(user.freelancerClientId && user.freelancerClientSecret),
         freelancerClientId: user.freelancerClientId || null,
         schedule: {
@@ -487,6 +495,10 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
       sealBids,
       maxBidsPerHour,
       maxBidsPerDay,
+      reviewMode,
+      skillsSummary,
+      experienceSummary,
+      portfolioHighlights,
       scheduleEnabled,
       scheduleTimezone,
       scheduleStartTime,
@@ -605,6 +617,29 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
         return res.status(400).json({ error: 'Max bids per day must be between 1 and 10000' });
       }
       data.maxBidsPerDay = n;
+    }
+
+    // Review-before-sending applies to every profile
+    if (reviewMode !== undefined) {
+      if (typeof reviewMode !== 'boolean') {
+        return res.status(400).json({ error: 'reviewMode must be a boolean' });
+      }
+      data.reviewMode = reviewMode;
+    }
+
+    // Freelancer profile — AI context for scoring and proposals
+    const contextLimits = { skillsSummary: 1000, experienceSummary: 2000, portfolioHighlights: 2000 };
+    for (const [field, max] of Object.entries(contextLimits)) {
+      const value = { skillsSummary, experienceSummary, portfolioHighlights }[field];
+      if (value === undefined) continue;
+      if (value !== null && typeof value !== 'string') {
+        return res.status(400).json({ error: `${field} must be a string` });
+      }
+      const trimmed = (value || '').trim();
+      if (trimmed.length > max) {
+        return res.status(400).json({ error: `${field} must be ${max} characters or fewer` });
+      }
+      data[field] = trimmed || null;
     }
 
     // Schedule settings with comprehensive validation
@@ -738,6 +773,10 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
       sealBids: true,
       maxBidsPerHour: true,
       maxBidsPerDay: true,
+      reviewMode: true,
+      skillsSummary: true,
+      experienceSummary: true,
+      portfolioHighlights: true,
       scheduleEnabled: true,
       scheduleTimezone: true,
       scheduleStartTime: true,
@@ -805,6 +844,10 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
         sealBids: user.sealBids,
         maxBidsPerHour: user.maxBidsPerHour,
         maxBidsPerDay: user.maxBidsPerDay,
+        reviewMode: user.reviewMode,
+        skillsSummary: user.skillsSummary || '',
+        experienceSummary: user.experienceSummary || '',
+        portfolioHighlights: user.portfolioHighlights || '',
         freelancerApiConfigured: !!(user.freelancerClientId && user.freelancerClientSecret),
         freelancerClientId: user.freelancerClientId || null,
         schedule: {

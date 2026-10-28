@@ -45,9 +45,16 @@ model User {
   webhookEnabled Boolean @default(false) @map("webhook_enabled")
   webhookUrl     String? @map("webhook_url")
 
-  // Shared profile settings (JSON) — targeting rules and AI context applied to
-  // every bidding profile. See services/bidding/sharedProfile.js for the shape.
-  sharedProfile  String? @map("shared_profile")
+  // Job filters (JSON) — client countries/regions/currencies and search
+  // languages applied to every bidding profile's project search.
+  // See services/bidding/jobFilters.js for the shape.
+  jobFilters     String? @map("job_filters")
+
+  // Account-wide bidding behaviour and AI context (apply to every profile)
+  reviewMode          Boolean @default(false) @map("review_mode")
+  skillsSummary       String? @map("skills_summary")
+  experienceSummary   String? @map("experience_summary")
+  portfolioHighlights String? @map("portfolio_highlights")
 
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
