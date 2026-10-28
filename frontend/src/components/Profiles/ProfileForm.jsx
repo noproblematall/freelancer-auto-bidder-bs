@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { inputClass, labelClass, sectionLabel, card } from './formStyles'
+import SegmentedControl from '../SegmentedControl'
 
 const INITIAL_STATE = {
   name: '',
@@ -108,22 +109,16 @@ export default function ProfileForm({ profile = null, onSave, onCancel, saving =
           </div>
           <div>
             <label className={labelClass}>Project Type</label>
-            <div className="flex gap-1">
-              {['both', 'fixed', 'hourly'].map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setForm(prev => ({ ...prev, projectTypes: t }))}
-                  className={`flex-1 py-2 text-xs font-medium rounded-md transition-colors ${
-                    form.projectTypes === t
-                      ? 'bg-navy-900 dark:bg-emerald-400 text-white dark:text-navy-950'
-                      : 'bg-slate-100 dark:bg-navy-900 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-navy-800'
-                  }`}
-                >
-                  {t === 'both' ? 'All' : t.charAt(0).toUpperCase() + t.slice(1)}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl
+              label="Project type"
+              value={form.projectTypes}
+              onChange={v => setForm(prev => ({ ...prev, projectTypes: v }))}
+              options={[
+                { value: 'both', label: 'All', description: 'Search fixed-price and hourly projects' },
+                { value: 'fixed', label: 'Fixed price', description: 'Only projects with a fixed budget' },
+                { value: 'hourly', label: 'Hourly', description: 'Only projects paid by the hour' },
+              ]}
+            />
           </div>
         </div>
       </div>
@@ -134,26 +129,16 @@ export default function ProfileForm({ profile = null, onSave, onCancel, saving =
         <div className="space-y-4">
           <div>
             <label className={labelClass}>Bid Amount Strategy</label>
-            <div className="flex gap-1">
-              {[
-                { value: 'auto', label: 'AI Auto' },
-                { value: 'fixed', label: 'Fixed Amount' },
-                { value: 'percentage', label: '% of Budget' },
-              ].map((s) => (
-                <button
-                  key={s.value}
-                  type="button"
-                  onClick={() => setForm(prev => ({ ...prev, bidAmountStrategy: s.value }))}
-                  className={`flex-1 py-2 text-xs font-medium rounded-md transition-colors ${
-                    form.bidAmountStrategy === s.value
-                      ? 'bg-navy-900 dark:bg-emerald-400 text-white dark:text-navy-950'
-                      : 'bg-slate-100 dark:bg-navy-900 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-navy-800'
-                  }`}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl
+              label="Bid amount strategy"
+              value={form.bidAmountStrategy}
+              onChange={v => setForm(prev => ({ ...prev, bidAmountStrategy: v }))}
+              options={[
+                { value: 'auto', label: 'AI auto', description: 'The AI picks a competitive amount within the project’s budget' },
+                { value: 'fixed', label: 'Fixed amount', description: 'Always bid the same amount, converted to the project’s currency' },
+                { value: 'percentage', label: '% of budget', description: 'Bid a set percentage of the project’s maximum budget' },
+              ]}
+            />
           </div>
           {form.bidAmountStrategy === 'fixed' && (
             <div>
@@ -177,25 +162,15 @@ export default function ProfileForm({ profile = null, onSave, onCancel, saving =
           )}
           <div>
             <label className={labelClass}>Delivery Period Strategy</label>
-            <div className="flex gap-1">
-              {[
-                { value: 'fixed', label: 'Fixed' },
-                { value: 'ai', label: 'AI-suggested' },
-              ].map((s) => (
-                <button
-                  key={s.value}
-                  type="button"
-                  onClick={() => setForm(prev => ({ ...prev, periodDaysStrategy: s.value }))}
-                  className={`flex-1 py-2 text-xs font-medium rounded-md transition-colors ${
-                    form.periodDaysStrategy === s.value
-                      ? 'bg-navy-900 dark:bg-emerald-400 text-white dark:text-navy-950'
-                      : 'bg-slate-100 dark:bg-navy-900 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-navy-800'
-                  }`}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl
+              label="Delivery period strategy"
+              value={form.periodDaysStrategy}
+              onChange={v => setForm(prev => ({ ...prev, periodDaysStrategy: v }))}
+              options={[
+                { value: 'fixed', label: 'Fixed', description: 'Always promise the same number of days' },
+                { value: 'ai', label: 'AI-suggested', description: 'Estimate from budget and your rate, blended with the AI’s estimate' },
+              ]}
+            />
           </div>
           {form.periodDaysStrategy === 'fixed' ? (
             <div className="grid grid-cols-2 gap-4">
