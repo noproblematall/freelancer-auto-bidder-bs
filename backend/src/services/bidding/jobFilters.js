@@ -3,17 +3,17 @@ const logger = require('../../utils/logger');
 
 // Job filters live on the User row (users.job_filters, JSON) and narrow the
 // project search for EVERY bidding profile: which client countries, regions
-// and project currencies to skip, which countries to allow, and which
-// languages to search in. They are set once under "Job Filters"; the
-// per-profile form does not expose them.
+// and project currencies to skip, which countries to allow, which languages
+// to search in, and the budget bounds a project must fall within. They are
+// set once under "Job Filters"; the per-profile form does not expose them.
 //
 // Merge rules (see mergeJobFilters):
 //   - Exclusion lists are COMBINED with anything still stored on the profile
 //     (legacy data from before job filters existed) — more exclusion is always
 //     the safe direction.
-//   - Allowlist and languages: the account value wins when set. A legacy
-//     per-profile value is used only when the account one is blank, so
-//     upgrading never silently widens a profile's reach.
+//   - Allowlist, languages and budget bounds: the account value wins when
+//     set. A legacy per-profile value is used only when the account one is
+//     blank, so upgrading never silently widens a profile's reach.
 
 // Lists whose values are combined with the profile's own list.
 const UNION_LIST_FIELDS = ['excludedCountries', 'excludedRegions', 'countryExceptions', 'excludedCurrencies'];
@@ -21,10 +21,12 @@ const UNION_LIST_FIELDS = ['excludedCountries', 'excludedRegions', 'countryExcep
 const OVERRIDE_LIST_FIELDS = ['countries'];
 // Free-text fields where the account value replaces the profile's own when set.
 const OVERRIDE_TEXT_FIELDS = ['languages'];
+// Numeric bounds (USD) where the account value replaces the profile's own when set.
+const NUMBER_FIELDS = ['budgetMinFixed', 'budgetMaxFixed', 'budgetMinHourly', 'budgetMaxHourly'];
 
 const LIST_FIELDS = [...UNION_LIST_FIELDS, ...OVERRIDE_LIST_FIELDS];
 const TEXT_FIELDS = [...OVERRIDE_TEXT_FIELDS];
-const ALL_FIELDS = [...LIST_FIELDS, ...TEXT_FIELDS];
+const ALL_FIELDS = [...LIST_FIELDS, ...TEXT_FIELDS, ...NUMBER_FIELDS];
 
 // Account-level AI context copied onto every profile for the analyzer and
 // proposal generator (users.skills_summary etc.). Not filters, but applied in
@@ -35,7 +37,15 @@ function emptyJobFilters() {
   const out = {};
   for (const f of LIST_FIELDS) out[f] = [];
   for (const f of TEXT_FIELDS) out[f] = '';
+  for (const f of NUMBER_FIELDS) out[f] = null;
   return out;
+}
+
+// A non-negative finite number, or null when unset/blank/invalid.
+function normalizeNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
 function normalizeList(value, { lowercase = false } = {}) {
@@ -75,6 +85,9 @@ function parseJobFilters(raw) {
   for (const f of TEXT_FIELDS) {
     out[f] = typeof parsed[f] === 'string' ? parsed[f].trim() : '';
   }
+  for (const f of NUMBER_FIELDS) {
+    out[f] = normalizeNumber(parsed[f]);
+  }
   return out;
 }
 
@@ -86,7 +99,7 @@ function serializeJobFilters(input) {
 
 function isEmptyJobFilters(filters) {
   if (!filters) return true;
-  return !ALL_FIELDS.some(f => Array.isArray(filters[f]) ? filters[f].length > 0 : !!filters[f]);
+  return !ALL_FIELDS.some(f => Array.isArray(filters[f]) ? filters[f].length > 0 : (filters[f] !== null && filters[f] !== '' && filters[f] !== undefined));
 }
 
 async function loadJobFilters(userId) {
@@ -119,6 +132,10 @@ function mergeJobFilters(profile, filters) {
 
   for (const f of OVERRIDE_TEXT_FIELDS) {
     if (filters[f]) merged[f] = filters[f];
+  }
+
+  for (const f of NUMBER_FIELDS) {
+    if (filters[f] != null) merged[f] = filters[f];
   }
 
   return merged;
@@ -158,6 +175,7 @@ module.exports = {
   UNION_LIST_FIELDS,
   OVERRIDE_LIST_FIELDS,
   OVERRIDE_TEXT_FIELDS,
+  NUMBER_FIELDS,
   LIST_FIELDS,
   TEXT_FIELDS,
   ALL_FIELDS,

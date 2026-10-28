@@ -28,6 +28,11 @@ const DEFAULT_JOB_FILTERS = Object.freeze({
   countries: [],
   // Search languages (comma-separated codes); blank would mean all languages
   languages: 'en, es',
+  // Budget bounds in USD; null means no bound
+  budgetMinFixed: 50,
+  budgetMaxFixed: null,
+  budgetMinHourly: 15,
+  budgetMaxHourly: null,
 });
 
 function defaultJobFiltersJson() {

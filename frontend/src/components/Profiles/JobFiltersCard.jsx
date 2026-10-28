@@ -45,9 +45,12 @@ export default function JobFiltersCard() {
   if (failed) return null
 
   const lists = ['countries', 'excludedRegions', 'countryExceptions', 'excludedCountries', 'excludedCurrencies']
+  const hasFixedBudget = !!filters && (filters.budgetMinFixed != null || filters.budgetMaxFixed != null)
+  const hasHourlyBudget = !!filters && (filters.budgetMinHourly != null || filters.budgetMaxHourly != null)
   const hasContent = !!filters && (
-    lists.some(k => Array.isArray(filters[k]) && filters[k].length > 0) || !!filters.languages
+    lists.some(k => Array.isArray(filters[k]) && filters[k].length > 0) || !!filters.languages || hasFixedBudget || hasHourlyBudget
   )
+  const range = (min, max, suffix = '') => `${min ?? '0'} – ${max != null ? `${max}` : '∞'}${suffix}`
 
   return (
     <div className="bg-white dark:bg-navy-800/90 rounded-xl shadow-lg dark:shadow-2xl dark:shadow-black/50 border border-slate-200 dark:border-white/6 overflow-hidden">
@@ -99,6 +102,16 @@ export default function JobFiltersCard() {
             {filters.excludedCurrencies.length > 0 && (
               <Row label="Excluded currencies">
                 {filters.excludedCurrencies.map(c => <Pill key={c}>{c}</Pill>)}
+              </Row>
+            )}
+            {hasFixedBudget && (
+              <Row label="Fixed budget">
+                <span className="text-xs font-medium text-slate-700 dark:text-slate-200">{range(filters.budgetMinFixed, filters.budgetMaxFixed)}</span>
+              </Row>
+            )}
+            {hasHourlyBudget && (
+              <Row label="Hourly rate">
+                <span className="text-xs font-medium text-slate-700 dark:text-slate-200">{range(filters.budgetMinHourly, filters.budgetMaxHourly, '/hr')}</span>
               </Row>
             )}
             {filters.languages && (

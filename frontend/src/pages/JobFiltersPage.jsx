@@ -5,9 +5,15 @@ import TargetingFields from '../components/Profiles/TargetingFields'
 import { EMPTY_TARGETING } from '../components/Profiles/targeting'
 import { inputClass, labelClass, sectionLabel, card, hintClass } from '../components/Profiles/formStyles'
 
+const BUDGET_FIELDS = ['budgetMinFixed', 'budgetMaxFixed', 'budgetMinHourly', 'budgetMaxHourly']
+
 const INITIAL_STATE = {
   ...EMPTY_TARGETING,
   languages: '',
+  budgetMinFixed: '',
+  budgetMaxFixed: '',
+  budgetMinHourly: '',
+  budgetMaxHourly: '',
 }
 
 function fromApi(filters) {
@@ -17,6 +23,18 @@ function fromApi(filters) {
     out[key] = Array.isArray(filters[key]) ? filters[key] : []
   }
   out.languages = filters.languages || ''
+  for (const key of BUDGET_FIELDS) {
+    out[key] = filters[key] != null ? String(filters[key]) : ''
+  }
+  return out
+}
+
+// Form strings → numbers (or null) for the API
+function toApi(form) {
+  const out = { ...form }
+  for (const key of BUDGET_FIELDS) {
+    out[key] = form[key] === '' ? null : Number(form[key])
+  }
   return out
 }
 
@@ -44,9 +62,20 @@ export default function JobFiltersPage() {
     e.preventDefault()
     setError(null)
     setSaved(false)
+    const payload = toApi(form)
+    if (payload.budgetMinFixed != null && payload.budgetMaxFixed != null && payload.budgetMinFixed > payload.budgetMaxFixed) {
+      setError('Fixed-price minimum budget cannot be greater than maximum.')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+    if (payload.budgetMinHourly != null && payload.budgetMaxHourly != null && payload.budgetMinHourly > payload.budgetMaxHourly) {
+      setError('Hourly minimum rate cannot be greater than maximum.')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
     setSaving(true)
     try {
-      const { filters } = await updateJobFilters(form)
+      const { filters } = await updateJobFilters(payload)
       setForm(fromApi(filters))
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
@@ -100,6 +129,27 @@ export default function JobFiltersPage() {
               value={form}
               onChange={patch => setForm(prev => ({ ...prev, ...patch }))}
             />
+          </div>
+
+          <div className={card}>
+            <p className={`${sectionLabel} mb-4`}>Budget</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className={labelClass}>Fixed-Price Budget Range (USD)</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <input type="number" min="0" value={form.budgetMinFixed} onChange={set('budgetMinFixed')} className={inputClass} placeholder="Min ($)" />
+                  <input type="number" min="0" value={form.budgetMaxFixed} onChange={set('budgetMaxFixed')} className={inputClass} placeholder="Max ($)" />
+                </div>
+              </div>
+              <div>
+                <label className={labelClass}>Hourly Rate Range (USD/hr)</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <input type="number" min="0" value={form.budgetMinHourly} onChange={set('budgetMinHourly')} className={inputClass} placeholder="Min" />
+                  <input type="number" min="0" value={form.budgetMaxHourly} onChange={set('budgetMaxHourly')} className={inputClass} placeholder="Max" />
+                </div>
+              </div>
+            </div>
+            <p className={hintClass}>Projects outside these ranges are skipped. Leave a field blank for no bound.</p>
           </div>
 
           <div className={card}>

@@ -5,10 +5,6 @@ import { inputClass, labelClass, sectionLabel, card } from './formStyles'
 const INITIAL_STATE = {
   name: '',
   searchKeywords: '',
-  budgetMinFixed: '',
-  budgetMaxFixed: '',
-  budgetMinHourly: '',
-  budgetMaxHourly: '',
   projectTypes: 'both',
   bidAmountStrategy: 'auto',
   fixedBidAmount: '',
@@ -34,10 +30,6 @@ export default function ProfileForm({ profile = null, onSave, onCancel, saving =
       setForm({
         name: profile.name || '',
         searchKeywords: profile.searchKeywords || '',
-        budgetMinFixed: profile.budgetMinFixed != null ? String(profile.budgetMinFixed) : '',
-        budgetMaxFixed: profile.budgetMaxFixed != null ? String(profile.budgetMaxFixed) : '',
-        budgetMinHourly: profile.budgetMinHourly != null ? String(profile.budgetMinHourly) : '',
-        budgetMaxHourly: profile.budgetMaxHourly != null ? String(profile.budgetMaxHourly) : '',
         projectTypes: profile.projectTypes || 'both',
         bidAmountStrategy: profile.bidAmountStrategy || 'auto',
         fixedBidAmount: profile.fixedBidAmount != null ? String(profile.fixedBidAmount) : '',
@@ -77,12 +69,6 @@ export default function ProfileForm({ profile = null, onSave, onCancel, saving =
     if (!form.name.trim()) return fail('Profile name is required.')
     if (form.bidAmountStrategy === 'fixed' && !form.fixedBidAmount) return fail('Fixed bid amount is required.')
     if (form.bidAmountStrategy === 'percentage' && !form.bidPercentage) return fail('Bid percentage is required.')
-    if (form.budgetMinFixed && form.budgetMaxFixed && parseFloat(form.budgetMinFixed) > parseFloat(form.budgetMaxFixed)) {
-      return fail('Fixed-price minimum budget cannot be greater than maximum.')
-    }
-    if (form.budgetMinHourly && form.budgetMaxHourly && parseFloat(form.budgetMinHourly) > parseFloat(form.budgetMaxHourly)) {
-      return fail('Hourly minimum budget cannot be greater than maximum.')
-    }
 
     try {
       await onSave(form)
@@ -105,7 +91,7 @@ export default function ProfileForm({ profile = null, onSave, onCancel, saving =
         <label className={labelClass}>Profile Name *</label>
         <input type="text" value={form.name} onChange={set('name')} className={inputClass} placeholder="e.g. React/Node Projects" />
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-3">
-          Client countries, regions, currencies, and languages are filtered for every profile under{' '}
+          Client countries, regions, currencies, languages, and budget ranges are filtered for every profile under{' '}
           <Link to="/job-filters" className="font-medium text-navy-700 dark:text-emerald-400 hover:underline">Job Filters</Link>.
           Review mode and your freelancer profile for the AI live in{' '}
           <Link to="/settings?section=autobidding" className="font-medium text-navy-700 dark:text-emerald-400 hover:underline">Settings</Link>.
@@ -137,22 +123,6 @@ export default function ProfileForm({ profile = null, onSave, onCancel, saving =
                   {t === 'both' ? 'All' : t.charAt(0).toUpperCase() + t.slice(1)}
                 </button>
               ))}
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className={labelClass}>Fixed-Price Budget Range</label>
-              <div className="grid grid-cols-2 gap-2">
-                <input type="number" value={form.budgetMinFixed} onChange={set('budgetMinFixed')} className={inputClass} placeholder="Min ($)" />
-                <input type="number" value={form.budgetMaxFixed} onChange={set('budgetMaxFixed')} className={inputClass} placeholder="Max ($)" />
-              </div>
-            </div>
-            <div>
-              <label className={labelClass}>Hourly Budget Range ($/hr)</label>
-              <div className="grid grid-cols-2 gap-2">
-                <input type="number" value={form.budgetMinHourly} onChange={set('budgetMinHourly')} className={inputClass} placeholder="Min" />
-                <input type="number" value={form.budgetMaxHourly} onChange={set('budgetMaxHourly')} className={inputClass} placeholder="Max" />
-              </div>
             </div>
           </div>
         </div>

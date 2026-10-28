@@ -30,8 +30,26 @@ router.put('/', async (req, res, next) => {
       }
     }
 
+    const bounds = {};
+    for (const f of ['budgetMinFixed', 'budgetMaxFixed', 'budgetMinHourly', 'budgetMaxHourly']) {
+      if (body[f] === undefined) continue;
+      if (body[f] === null || body[f] === '') { bounds[f] = null; continue; }
+      const n = Number(body[f]);
+      if (!Number.isFinite(n) || n < 0) {
+        return res.status(400).json({ error: `${f} must be a number of 0 or more` });
+      }
+      bounds[f] = n;
+    }
+    if (bounds.budgetMinFixed != null && bounds.budgetMaxFixed != null && bounds.budgetMinFixed > bounds.budgetMaxFixed) {
+      return res.status(400).json({ error: 'Fixed-price minimum budget cannot be greater than maximum' });
+    }
+    if (bounds.budgetMinHourly != null && bounds.budgetMaxHourly != null && bounds.budgetMinHourly > bounds.budgetMaxHourly) {
+      return res.status(400).json({ error: 'Hourly minimum rate cannot be greater than maximum' });
+    }
+
     const payload = {};
     for (const f of ALL_FIELDS) if (body[f] !== undefined) payload[f] = body[f];
+    Object.assign(payload, bounds);
 
     const user = await prisma.user.update({
       where: { id: req.userId },
