@@ -299,6 +299,9 @@ router.post('/:id/generate-proposal', async (req, res, next) => {
     project.jobNames = parseJobNames(project);
 
     const result = await generateProposal(openai, project, profile);
+    if (result.skipped) {
+      return res.status(422).json({ error: `The proposal prompt rules say not to bid on this project (${result.reason}).` });
+    }
 
     // Return existing analysis if available
     const analysis = project.aiAnalysis ? JSON.parse(project.aiAnalysis) : null;

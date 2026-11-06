@@ -228,8 +228,9 @@ export default function ProfileForm({ profile = null, onSave, onCancel, saving =
             <input type="number" value={form.minRelevanceScore} onChange={set('minRelevanceScore')} className={inputClass} min="0" max="100" />
           </div>
           <div>
-            <label className={labelClass}>Custom Proposal Prompt</label>
-            <textarea value={form.proposalPrompt} onChange={set('proposalPrompt')} rows={5} className={inputClass} placeholder="Leave blank to use the default prompt from ChatGPT-prompt.md" />
+            <label className={labelClass}>Extra Proposal Instructions</label>
+            <textarea value={form.proposalPrompt} onChange={set('proposalPrompt')} rows={5} className={inputClass} placeholder="e.g. Mention my Shopify Plus experience and always offer a free 15-minute call." />
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Appended to the account-wide proposal prompt (Settings → Auto-Bidding) for bids from this profile. Leave blank to use the shared prompt as is.</p>
           </div>
         </div>
       </div>

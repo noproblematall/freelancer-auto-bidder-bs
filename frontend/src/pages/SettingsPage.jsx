@@ -62,6 +62,9 @@ export default function SettingsPage() {
   const [portfolioHighlights, setPortfolioHighlights] = useState(user?.portfolioHighlights || '')
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileMessage, setProfileMessage] = useState(null)
+  const [proposalPrompt, setProposalPrompt] = useState(user?.proposalPrompt || '')
+  const [promptSaving, setPromptSaving] = useState(false)
+  const [promptMessage, setPromptMessage] = useState(null)
   const [openaiTesting, setOpenaiTesting] = useState(false)
   const [openaiTestMessage, setOpenaiTestMessage] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -135,6 +138,7 @@ export default function SettingsPage() {
     if (user?.skillsSummary !== undefined) setSkillsSummary(user.skillsSummary || '')
     if (user?.experienceSummary !== undefined) setExperienceSummary(user.experienceSummary || '')
     if (user?.portfolioHighlights !== undefined) setPortfolioHighlights(user.portfolioHighlights || '')
+    if (user?.proposalPrompt !== undefined) setProposalPrompt(user.proposalPrompt || '')
     if (user?.schedule) {
       setScheduleEnabled(user.schedule.enabled || false)
       setTimezone(user.schedule.timezone || 'America/New_York')
@@ -249,6 +253,32 @@ export default function SettingsPage() {
       setOpenaiTestMessage({ type: 'error', text: err.response?.data?.error || 'Key test failed.' })
     } finally {
       setOpenaiTesting(false)
+    }
+  }
+
+  async function handleSavePrompt(e) {
+    e.preventDefault()
+    setPromptSaving(true)
+    setPromptMessage(null)
+    try {
+      await updateSettings({ proposalPrompt })
+      setPromptMessage({ type: 'success', text: 'Saved.' })
+      setTimeout(() => setPromptMessage(null), 2500)
+    } catch (err) {
+      setPromptMessage({ type: 'error', text: err.response?.data?.error || 'Failed to save — try again.' })
+    } finally {
+      setPromptSaving(false)
+    }
+  }
+
+  async function handleResetPrompt() {
+    setPromptMessage(null)
+    try {
+      const { data } = await api.get('/auth/prompt-default')
+      setProposalPrompt(data.prompt)
+      setPromptMessage({ type: 'success', text: 'Default prompt restored — click Save Prompt to keep it.' })
+    } catch {
+      setPromptMessage({ type: 'error', text: 'Could not load the default prompt.' })
     }
   }
 
@@ -1373,6 +1403,51 @@ export default function SettingsPage() {
                   </button>
                 </div>
               </div>
+
+              <form onSubmit={handleSavePrompt} className="p-4 rounded-lg bg-slate-50 dark:bg-navy-900/50 border border-slate-200 dark:border-white/8">
+                <div className="flex items-start justify-between gap-4 mb-2">
+                  <div>
+                    <label htmlFor="proposal-prompt" className="block text-sm font-medium text-navy-950 dark:text-white">
+                      Proposal Prompt
+                    </label>
+                    <p className="text-xs text-slate-700 dark:text-slate-200 mt-1">
+                      How the AI writes every bid. A bid profile's own "extra instructions" are appended to this for that profile.
+                      {user?.proposalPromptIsDefault && <span className="ml-1 text-slate-500 dark:text-slate-400">(currently the built-in default)</span>}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleResetPrompt}
+                    className="shrink-0 text-xs font-medium text-navy-700 dark:text-emerald-400 hover:underline"
+                  >
+                    Reset to default
+                  </button>
+                </div>
+                <textarea
+                  id="proposal-prompt"
+                  rows={12}
+                  value={proposalPrompt}
+                  onChange={(e) => setProposalPrompt(e.target.value)}
+                  className="w-full px-3 py-2 text-sm font-mono leading-relaxed bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500/20 focus:border-navy-500 transition-colors"
+                />
+                <div className="flex items-center gap-3 mt-3">
+                  <button
+                    type="submit"
+                    disabled={promptSaving}
+                    className="px-4 py-2 text-sm font-medium text-white dark:text-navy-950 bg-navy-900 dark:bg-emerald-400 rounded-lg hover:bg-navy-800 dark:hover:bg-emerald-500 transition-colors shadow-sm disabled:opacity-50"
+                  >
+                    {promptSaving ? 'Saving...' : 'Save Prompt'}
+                  </button>
+                  {promptMessage && (
+                    <span className={`text-xs font-medium ${
+                      promptMessage.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                    }`}>
+                      {promptMessage.text}
+                    </span>
+                  )}
+                  <span className="ml-auto text-xs text-slate-400">{proposalPrompt.length} chars</span>
+                </div>
+              </form>
 
               <div className="pt-1">
                 <button

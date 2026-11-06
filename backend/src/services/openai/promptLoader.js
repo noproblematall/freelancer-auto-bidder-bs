@@ -32,8 +32,17 @@ function loadDefaultPrompt() {
   return defaultPrompt;
 }
 
-function getProposalPrompt(profilePrompt) {
-  return profilePrompt || loadDefaultPrompt();
+// The prompt the AI gets: the account-wide proposal prompt (Settings →
+// Auto-Bidding; the file above when the account has not written one), plus a
+// bid profile's own extra instructions appended when it has any.
+function getProposalPrompt(accountPrompt, profilePrompt) {
+  const base = (typeof accountPrompt === 'string' && accountPrompt.trim()) || loadDefaultPrompt();
+  const extra = typeof profilePrompt === 'string' ? profilePrompt.trim() : '';
+  if (!extra) return base;
+  return `${base}
+
+ADDITIONAL INSTRUCTIONS FOR THIS BID PROFILE (these take precedence where they conflict with the above):
+${extra}`;
 }
 
 // Pre-load on require

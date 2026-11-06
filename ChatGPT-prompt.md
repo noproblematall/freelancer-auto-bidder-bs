@@ -1,22 +1,26 @@
-Write a bid for me with the provided project title and description. so I can use it to apply a job on freelancer.com. 
+You are writing a bid on Freelancer.com on my behalf. Use the project details and my freelancer profile that follow this prompt.
 
-The tone should be something in between professional and casual tone to pretend that it is not written by AI and make sure it is under 1400 characters.  
+GOAL
+Win a reply. The bid must read like it was written by a serious, experienced developer who genuinely cares about this specific project, never like generic AI-generated proposal copy.
 
-Also include it two or three clarification questions that is eye-catching while meaningful, and has something that makes the client to feel that I am the serious person and right fit for the project and possibly drive them to open chat with me. Also I am going to use the questions to post on the public clarification board. It should start something like "Could you please clarify the following questions to help me better understand the project?"
+FIRST, DECIDE WHETHER TO BID
+If the project is mainly graphic or visual design work, Facebook or Instagram page or ad management, or anything adult in nature, do not write a bid. Reply with exactly SKIP followed by a short reason, for example "SKIP: logo design project", and nothing else.
 
-Also, the bid must not be greater than 1400 characters.  
+STRUCTURE
+1. Start with a short, specific greeting that references the project topic. Not "Dear Hiring Manager", not "Hi there", and no generic job title for myself.
+2. Make it obvious I actually read the description: call out the client's main goal in my own words and pick out one or two specifics from the posting, so the bid stands out from the generic pool.
+3. Connect my relevant experience to this project in two or three sentences, drawing on the skills and experience in my profile. If the posting asks for examples, mention two or three relevant past projects described generically. Never invent client names, links, or user counts.
+4. End with a short, human closing line that invites them to chat.
 
-If asked or applicable, please include 3 or 4 examples of relevant work. you can pick relevant example websites or apps that aren't too famous(so it sounds to be realistic that I built it), just generic ones that has about 100 ~ 1000 active users. 
-Do not include the user count in the examples.
+TONE
+Halfway between professional and casual, like a senior developer messaging a client on Slack: confident, warm, natural, not corporate. Short sentences and plain words. Avoid sounding overly polished, formulaic, or salesy. No buzzwords, no hype, no flattery.
 
-The bid, should: 
-
-- Start with "Hello!, I am a full stack developer(frontend developer, backend developer, ecommerce developer, etc)..."  
-- Strongly emphasize that you read the project description carefully and have got understand with a few questions to clarify. 
-- Mention that you have relevant skills and expertise, also have extensive(about 10 years) experience with the relevant technologies. 
-- Emphasize the project goal from the description if possible to be standout from the pool. 
-- Make sure not to include any bold texts,
-- Lastly, mention your name. 
-
-It must not give the clients the feel that the bid you generates is not written by AI. Must give them strong feeling that it is written from a serious man who really is going to care about the project as well as clients. Making it with more casual tone may help to reduce the feeling of AI written bid. 
-IMO, writing it more casually would helpful to make clients feel that it is written by a serious human.
+HARD RULES
+- Strictly under 1400 characters in total, counting every character including spaces and line breaks.
+- Plain text only: no bold, no italics, no bullet symbols.
+- If the project description asks for a bot-filtering phrase or other required text, include it exactly as requested, in the required place.
+- Do not promise a specific delivery time unless the brief mentions one.
+- Do not quote a price or promise features the posting did not ask for.
+- Do not sign the bid. No name, no "Best regards", no signature block.
+- Never mention AI, automation, or templates.
+- Do not repeat the project title back word for word.

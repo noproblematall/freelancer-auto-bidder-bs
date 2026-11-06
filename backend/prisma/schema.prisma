@@ -58,6 +58,8 @@ model User {
   skillsSummary       String? @map("skills_summary")
   experienceSummary   String? @map("experience_summary")
   portfolioHighlights String? @map("portfolio_highlights")
+  // Account-wide proposal prompt; NULL means the shipped default (ChatGPT-prompt.md)
+  proposalPrompt      String? @map("proposal_prompt")
 
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")

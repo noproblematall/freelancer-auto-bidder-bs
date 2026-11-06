@@ -12,6 +12,7 @@ const { isValidWebhookUrl } = require('../services/notifications/webhook');
 const logger = require('../utils/logger');
 const { defaultJobFiltersJson, defaultScheduleWeekJson } = require('../../prisma/seed');
 const { resolveScheduleWeek, validateScheduleWeek, serializeScheduleWeek } = require('../services/bidding/scheduleWeek');
+const { loadDefaultPrompt } = require('../services/openai/promptLoader');
 
 const router = express.Router();
 
@@ -373,6 +374,7 @@ router.get('/status', authMiddleware, async (req, res, next) => {
         skillsSummary: true,
         experienceSummary: true,
         portfolioHighlights: true,
+        proposalPrompt: true,
         scheduleEnabled: true,
         scheduleTimezone: true,
         scheduleStartTime: true,
@@ -414,6 +416,9 @@ router.get('/status', authMiddleware, async (req, res, next) => {
         skillsSummary: user.skillsSummary || '',
         experienceSummary: user.experienceSummary || '',
         portfolioHighlights: user.portfolioHighlights || '',
+        // Effective prompt (the default when none was written) so the UI always shows real text
+        proposalPrompt: user.proposalPrompt || loadDefaultPrompt(),
+        proposalPromptIsDefault: !user.proposalPrompt,
         freelancerApiConfigured: !!(user.freelancerClientId && user.freelancerClientSecret),
         freelancerClientId: user.freelancerClientId || null,
         schedule: {
@@ -452,6 +457,11 @@ router.get('/status', authMiddleware, async (req, res, next) => {
 });
 
 // PUT /api/auth/settings — update OpenAI, schedule, and Telegram settings
+// GET /api/auth/prompt-default — the shipped default proposal prompt (for "Reset to default")
+router.get('/prompt-default', authMiddleware, (req, res) => {
+  res.json({ prompt: loadDefaultPrompt() });
+});
+
 // POST /api/auth/openai/test — verify the saved (or a provided) OpenAI key
 // actually works. Without this, a typo'd key saves "successfully" and the
 // engine then fails every run with no in-app explanation.
@@ -499,6 +509,7 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
       skillsSummary,
       experienceSummary,
       portfolioHighlights,
+      proposalPrompt,
       scheduleEnabled,
       scheduleTimezone,
       scheduleStartTime,
@@ -643,6 +654,19 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
       data[field] = trimmed || null;
     }
 
+    // Account-wide proposal prompt. Blank (or identical to the shipped default)
+    // stores NULL so the account keeps tracking the default.
+    if (proposalPrompt !== undefined) {
+      if (proposalPrompt !== null && typeof proposalPrompt !== 'string') {
+        return res.status(400).json({ error: 'proposalPrompt must be a string' });
+      }
+      const trimmed = (proposalPrompt || '').trim();
+      if (trimmed.length > 8000) {
+        return res.status(400).json({ error: 'Proposal prompt must be 8000 characters or fewer' });
+      }
+      data.proposalPrompt = trimmed && trimmed !== loadDefaultPrompt() ? trimmed : null;
+    }
+
     // Schedule settings with comprehensive validation
     if (scheduleEnabled !== undefined) {
       // Validate boolean type
@@ -784,6 +808,7 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
       skillsSummary: true,
       experienceSummary: true,
       portfolioHighlights: true,
+      proposalPrompt: true,
       scheduleEnabled: true,
       scheduleTimezone: true,
       scheduleStartTime: true,
@@ -856,6 +881,9 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
         skillsSummary: user.skillsSummary || '',
         experienceSummary: user.experienceSummary || '',
         portfolioHighlights: user.portfolioHighlights || '',
+        // Effective prompt (the default when none was written) so the UI always shows real text
+        proposalPrompt: user.proposalPrompt || loadDefaultPrompt(),
+        proposalPromptIsDefault: !user.proposalPrompt,
         freelancerApiConfigured: !!(user.freelancerClientId && user.freelancerClientSecret),
         freelancerClientId: user.freelancerClientId || null,
         schedule: {

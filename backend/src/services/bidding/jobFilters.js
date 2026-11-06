@@ -150,7 +150,7 @@ async function applyAccountSettings(profile, userId) {
   const user = id
     ? await prisma.user.findUnique({
         where: { id },
-        select: { jobFilters: true, reviewMode: true, skillsSummary: true, experienceSummary: true, portfolioHighlights: true },
+        select: { jobFilters: true, reviewMode: true, proposalPrompt: true, skillsSummary: true, experienceSummary: true, portfolioHighlights: true },
       })
     : null;
 
@@ -158,6 +158,10 @@ async function applyAccountSettings(profile, userId) {
 
   // Review mode is account-wide: the per-profile column is ignored entirely.
   base.reviewMode = user?.reviewMode === true;
+
+  // Account-wide proposal prompt; the profile's own proposalPrompt is appended
+  // to it by promptLoader.getProposalPrompt.
+  base.accountProposalPrompt = (typeof user?.proposalPrompt === 'string' && user.proposalPrompt.trim()) || null;
 
   // AI context: the account value wins; a legacy per-profile value is kept
   // only when the account has none.

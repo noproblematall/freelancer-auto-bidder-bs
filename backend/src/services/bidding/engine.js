@@ -604,7 +604,12 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
       // Step 7: Generate proposal
       let proposalText;
       try {
-        ({ proposalText } = await generateProposal(openai, project, profile));
+        const generated = await generateProposal(openai, project, profile);
+        if (generated.skipped) {
+          logger.info(`Project #${project.id}: skipped — ${generated.reason}`);
+          continue;
+        }
+        ({ proposalText } = generated);
       } catch (err) {
         logger.error(`generateProposal failed for project #${project.id}: ${err.message}`);
         results.errors++;

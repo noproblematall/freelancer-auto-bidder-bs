@@ -35,7 +35,7 @@ PROJECT:
 }
 
 async function generateProposal(openaiClient, project, profile) {
-  const basePrompt = getProposalPrompt(profile?.proposalPrompt);
+  const basePrompt = getProposalPrompt(profile?.accountProposalPrompt, profile?.proposalPrompt);
   const userPrompt = buildUserPrompt(project, basePrompt, profile);
 
   // Detect bot filter requirement in project description
@@ -51,6 +51,15 @@ async function generateProposal(openaiClient, project, profile) {
   });
 
   let proposalText = content.trim();
+
+  // The prompt asks the model to answer "SKIP: <reason>" for projects it must
+  // not bid on (design, social media management, adult). Honour that.
+  const skipMatch = /^SKIP\b[:\s-]*([\s\S]*)$/i.exec(proposalText);
+  if (skipMatch && proposalText.length < 300) {
+    const reason = (skipMatch[1] || '').trim().split('\n')[0] || 'prompt rules';
+    logger.info(`Project #${project.id}: prompt rules say not to bid (${reason})`);
+    return { skipped: true, reason, proposalText: '', charCount: 0 };
+  }
 
   // If bot filter detected, prepend the required phrase
   if (botFilter.hasFilter && botFilter.requiredPhrase) {
