@@ -10,7 +10,7 @@ const { createFreelancerClient } = require('../services/freelancer/client');
 const { getSelf } = require('../services/freelancer/users');
 const { isValidWebhookUrl } = require('../services/notifications/webhook');
 const logger = require('../utils/logger');
-const { defaultJobFiltersJson, defaultScheduleWeekJson } = require('../../prisma/seed');
+const { defaultJobFiltersJson, defaultScheduleWeekJson, defaultFreelancerProfile } = require('../../prisma/seed');
 const { resolveScheduleWeek, validateScheduleWeek, serializeScheduleWeek } = require('../services/bidding/scheduleWeek');
 const { loadDefaultPrompt } = require('../services/openai/promptLoader');
 
@@ -34,7 +34,7 @@ router.post('/register', async (req, res, next) => {
 
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await prisma.user.create({
-      data: { email, passwordHash, jobFilters: defaultJobFiltersJson(), scheduleWeek: defaultScheduleWeekJson(), scheduleEnabled: true },
+      data: { email, passwordHash, jobFilters: defaultJobFiltersJson(), scheduleWeek: defaultScheduleWeekJson(), scheduleEnabled: true, ...defaultFreelancerProfile() },
     });
 
     const token = jwt.sign({ userId: user.id }, env.jwtSecret, { expiresIn: '7d' });
@@ -66,7 +66,7 @@ router.post('/local-session', async (req, res, next) => {
       // and keeps /login unusable for this account by guessing.
       const passwordHash = await bcrypt.hash(require('crypto').randomBytes(32).toString('hex'), 12);
       user = await prisma.user.create({
-        data: { email: 'local@growlance.app', passwordHash, jobFilters: defaultJobFiltersJson(), scheduleWeek: defaultScheduleWeekJson(), scheduleEnabled: true },
+        data: { email: 'local@growlance.app', passwordHash, jobFilters: defaultJobFiltersJson(), scheduleWeek: defaultScheduleWeekJson(), scheduleEnabled: true, ...defaultFreelancerProfile() },
       });
       logger.info('Local user created for silent session');
     }
@@ -640,7 +640,7 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
     }
 
     // Freelancer profile — AI context for scoring and proposals
-    const contextLimits = { skillsSummary: 1000, experienceSummary: 2000, portfolioHighlights: 2000 };
+    const contextLimits = { skillsSummary: 2000, experienceSummary: 2000, portfolioHighlights: 2000 };
     for (const [field, max] of Object.entries(contextLimits)) {
       const value = { skillsSummary, experienceSummary, portfolioHighlights }[field];
       if (value === undefined) continue;

@@ -56,6 +56,52 @@ function defaultScheduleWeekJson() {
   return JSON.stringify(DEFAULT_SCHEDULE_WEEK);
 }
 
+// Freelancer profile (users.skills_summary / experience_summary /
+// portfolio_highlights): what the AI is told about the freelancer when it
+// scores projects and writes bids. A solid full-stack, mobile and AI developer
+// profile by default; the account owner edits it under Settings → Freelancer
+// Profile. Skills and experience describe capabilities in general. Portfolio
+// highlights are the owner's REAL projects and ship empty: the bid prompt only
+// quotes examples from there, so nothing made-up ever reaches a client.
+const DEFAULT_FREELANCER_PROFILE = Object.freeze({
+  // One "- " bullet per area so the text reads cleanly in the Settings editor and in the prompt
+  skillsSummary: [
+    "- Full-stack web and mobile developer with a strong AI and machine learning background.",
+    "- Frontend: React, Next.js, Vue, TypeScript, Tailwind, responsive and accessible UI.",
+    "- Backend: Node.js (Express, NestJS), Python (Django, FastAPI), PHP (Laravel), REST and GraphQL APIs, auth, background jobs.",
+    "- Mobile: React Native and Expo, Flutter, native iOS (Swift, SwiftUI) and Android (Kotlin), push notifications, offline sync, in-app purchases, App Store and Google Play releases.",
+    "- AI and ML: LLM apps with OpenAI, Anthropic and open-source models, RAG pipelines, vector search (pgvector, Pinecone), prompt design, fine-tuning and model training with PyTorch and scikit-learn, chatbots and AI agents, data labeling and evaluation.",
+    "- Data: PostgreSQL, MySQL, MongoDB, Redis, ETL pipelines, reporting dashboards.",
+    "- E-commerce: Shopify (themes, Liquid, custom apps), WooCommerce, Stripe and PayPal.",
+    "- CMS: WordPress themes and plugins, headless CMS.",
+    "- Integrations and automation: third-party APIs, webhooks, scraping, scheduled jobs, Zapier, Make, n8n.",
+    "- DevOps: Docker, AWS, GCP, Vercel, CI/CD, monitoring, performance and SEO.",
+  ].join('\n'),
+  experienceSummary: [
+    "- About 10 years building web and mobile products for small businesses, agencies and startups, and the last few years adding AI features to them.",
+    "- Web: custom apps and client portals, SaaS dashboards, multi-vendor marketplaces with split payouts, booking and scheduling platforms, internal tools and CRMs that replace spreadsheets, real-time operations dashboards, and API integrations with CRMs, payment, shipping and marketing tools.",
+    "- E-commerce: Shopify and WooCommerce stores built from scratch or rebuilt, custom themes, subscription and checkout customisation, and performance work that typically halves load times.",
+    "- Mobile: cross-platform iOS and Android apps for marketplaces, food delivery with live order tracking, bookings and loyalty programs, from design handoff to store submission and post-launch updates; companion apps for existing web products.",
+    "- AI: customer-support assistants with retrieval over help docs and order data, contract and document analysis tools with reviewer UIs, fine-tuned classification models that route and flag content, content and proposal generation tools, recommendation models, and AI agents that automate back-office work.",
+    "- Maintenance: bug fixing, performance tuning, security hardening, and migrations of legacy sites (for example WordPress to React) to modern stacks while preserving URLs and search rankings. Comfortable taking over someone else's code.",
+    "- Way of working: clear written updates, realistic estimates, a short demo at each milestone, and no surprises on scope or cost.",
+  ].join('\n'),
+  portfolioHighlights: null,
+});
+
+function defaultFreelancerProfile() {
+  return { ...DEFAULT_FREELANCER_PROFILE };
+}
+
+// Idempotent: only accounts with no profile text at all are touched.
+async function seedFreelancerProfileDefaults(prisma) {
+  const result = await prisma.user.updateMany({
+    where: { skillsSummary: null, experienceSummary: null, portfolioHighlights: null },
+    data: defaultFreelancerProfile(),
+  });
+  return result.count;
+}
+
 // Idempotent: accounts without a per-day schedule get the default and the
 // schedule switched on. (Accounts that customised the legacy single window
 // are converted by the 20261027000009_schedule_week migration instead.)
@@ -83,6 +129,8 @@ async function main() {
     console.log(`Seed: job filter defaults applied to ${seeded} account(s)`);
     const scheduled = await seedScheduleDefaults(prisma);
     console.log(`Seed: schedule defaults applied to ${scheduled} account(s)`);
+    const profiled = await seedFreelancerProfileDefaults(prisma);
+    console.log(`Seed: freelancer profile defaults applied to ${profiled} account(s)`);
   } finally {
     await prisma.$disconnect();
   }
@@ -98,4 +146,5 @@ if (require.main === module) {
 module.exports = {
   DEFAULT_JOB_FILTERS, defaultJobFiltersJson, seedJobFilterDefaults,
   DEFAULT_SCHEDULE_WEEK, defaultScheduleWeekJson, seedScheduleDefaults,
+  DEFAULT_FREELANCER_PROFILE, defaultFreelancerProfile, seedFreelancerProfileDefaults,
 };
