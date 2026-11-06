@@ -10,7 +10,8 @@ const { createFreelancerClient } = require('../services/freelancer/client');
 const { getSelf } = require('../services/freelancer/users');
 const { isValidWebhookUrl } = require('../services/notifications/webhook');
 const logger = require('../utils/logger');
-const { defaultJobFiltersJson } = require('../../prisma/seed');
+const { defaultJobFiltersJson, defaultScheduleWeekJson } = require('../../prisma/seed');
+const { resolveScheduleWeek, validateScheduleWeek, serializeScheduleWeek } = require('../services/bidding/scheduleWeek');
 
 const router = express.Router();
 
@@ -32,7 +33,7 @@ router.post('/register', async (req, res, next) => {
 
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await prisma.user.create({
-      data: { email, passwordHash, jobFilters: defaultJobFiltersJson() },
+      data: { email, passwordHash, jobFilters: defaultJobFiltersJson(), scheduleWeek: defaultScheduleWeekJson(), scheduleEnabled: true },
     });
 
     const token = jwt.sign({ userId: user.id }, env.jwtSecret, { expiresIn: '7d' });
@@ -64,7 +65,7 @@ router.post('/local-session', async (req, res, next) => {
       // and keeps /login unusable for this account by guessing.
       const passwordHash = await bcrypt.hash(require('crypto').randomBytes(32).toString('hex'), 12);
       user = await prisma.user.create({
-        data: { email: 'local@growlance.app', passwordHash, jobFilters: defaultJobFiltersJson() },
+        data: { email: 'local@growlance.app', passwordHash, jobFilters: defaultJobFiltersJson(), scheduleWeek: defaultScheduleWeekJson(), scheduleEnabled: true },
       });
       logger.info('Local user created for silent session');
     }
@@ -377,6 +378,7 @@ router.get('/status', authMiddleware, async (req, res, next) => {
         scheduleStartTime: true,
         scheduleEndTime: true,
         scheduleDays: true,
+        scheduleWeek: true,
         telegramEnabled: true,
         telegramBidNotificationsEnabled: true,
         telegramBotToken: true,
@@ -417,9 +419,7 @@ router.get('/status', authMiddleware, async (req, res, next) => {
         schedule: {
           enabled: user.scheduleEnabled,
           timezone: user.scheduleTimezone,
-          startTime: user.scheduleStartTime,
-          endTime: user.scheduleEndTime,
-          days: (user.scheduleDays || '1,2,3,4,5').split(',').map(d => parseInt(d)).filter(n => !isNaN(n)),
+          week: resolveScheduleWeek(user),
         },
         telegram: {
           enabled: user.telegramEnabled,
@@ -504,6 +504,7 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
       scheduleStartTime,
       scheduleEndTime,
       scheduleDays,
+      scheduleWeek,
       telegramEnabled,
       telegramBidNotificationsEnabled,
       telegramBotToken,
@@ -724,6 +725,12 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
       }
     }
 
+    if (scheduleWeek !== undefined) {
+      const { value, error } = validateScheduleWeek(scheduleWeek);
+      if (error) return res.status(400).json({ error });
+      data.scheduleWeek = serializeScheduleWeek(value);
+    }
+
     // Telegram settings
     if (telegramEnabled !== undefined) {
       if (typeof telegramEnabled !== 'boolean') {
@@ -782,6 +789,7 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
       scheduleStartTime: true,
       scheduleEndTime: true,
       scheduleDays: true,
+      scheduleWeek: true,
       telegramEnabled: true,
       telegramBidNotificationsEnabled: true,
       telegramBotToken: true,
@@ -853,9 +861,7 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
         schedule: {
           enabled: user.scheduleEnabled,
           timezone: user.scheduleTimezone,
-          startTime: user.scheduleStartTime,
-          endTime: user.scheduleEndTime,
-          days: (user.scheduleDays || '1,2,3,4,5').split(',').map(d => parseInt(d)).filter(n => !isNaN(n)),
+          week: resolveScheduleWeek(user),
         },
         telegram: {
           enabled: user.telegramEnabled,

@@ -29,6 +29,9 @@ model User {
   scheduleStartTime String?  @map("schedule_start_time")
   scheduleEndTime   String?  @map("schedule_end_time")
   scheduleDays      String   @default("1,2,3,4,5") @map("schedule_days")
+  // Per-day windows (JSON, see services/bidding/scheduleWeek.js). Supersedes the
+  // three single-window fields above, which are kept for older rows.
+  scheduleWeek      String?  @map("schedule_week")
 
   // Freelancer API Credentials (per-user, for TOS compliance)
   freelancerClientId     String?  @map("freelancer_client_id")

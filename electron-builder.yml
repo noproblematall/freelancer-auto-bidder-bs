@@ -12,6 +12,8 @@ files:
   - electron/**
   - backend/src/**
   - backend/prisma/schema.prisma
+  # Seeder: required by auth.routes.js to give new accounts their default job filters
+  - backend/prisma/seed.js
   - node_modules/**
   - package.json
 

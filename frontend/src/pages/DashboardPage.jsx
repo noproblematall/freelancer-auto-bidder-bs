@@ -315,11 +315,15 @@ export default function DashboardPage() {
                 // Get timezone abbreviation
                 const tzAbbr = user.schedule.timezone.split('/')[1]?.replace('_', ' ') || user.schedule.timezone
 
-                // Format days
+                // Per-day windows (0 = Sunday)
+                const week = user.schedule.week || {}
                 const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-                const activeDayNames = user.schedule.days.map(d => dayNames[d])
+                const enabledDays = [0, 1, 2, 3, 4, 5, 6].filter(d => week[d]?.enabled)
+                const activeDayNames = enabledDays.map(d => dayNames[d])
                 const daysText = activeDayNames.length === 7
                   ? 'Every day'
+                  : activeDayNames.length === 0
+                  ? 'No days enabled'
                   : activeDayNames.length === 5 && activeDayNames.every(d => !['Sun', 'Sat'].includes(d))
                   ? 'Weekdays'
                   : activeDayNames.join(', ')
@@ -339,16 +343,17 @@ export default function DashboardPage() {
                 const currentDay = dayMap[get('weekday')] ?? 0
                 const currentTime = `${String(get('hour')).padStart(2, '0')}:${String(get('minute')).padStart(2, '0')}`
 
-                const dayAllowed = user.schedule.days.includes(currentDay)
-                const timeAllowed = currentTime >= user.schedule.startTime && currentTime < user.schedule.endTime
+                const today = week[currentDay]
+                const dayAllowed = !!today?.enabled
+                const timeAllowed = dayAllowed && currentTime >= today.start && currentTime < today.end
                 const isActive = dayAllowed && timeAllowed
 
                 return (
                   <>
                     <div className="py-2 border-b border-slate-100 dark:border-white/8">
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Time Window</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Today's Window</p>
                       <p className="text-sm font-medium text-navy-950 dark:text-white">
-                        {formatTime(user.schedule.startTime)} - {formatTime(user.schedule.endTime)}
+                        {dayAllowed ? `${formatTime(today.start)} - ${formatTime(today.end)}` : 'Off today'}
                       </p>
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{tzAbbr}</p>
                     </div>

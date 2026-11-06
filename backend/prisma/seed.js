@@ -39,6 +39,34 @@ function defaultJobFiltersJson() {
   return JSON.stringify(DEFAULT_JOB_FILTERS);
 }
 
+// Bidding schedule (users.schedule_week) for a new account: every day except
+// Sunday, 05:00–21:00 in the account timezone. Keys are JavaScript days
+// (0 = Sunday). The shape mirrors services/bidding/scheduleWeek.js.
+const DEFAULT_SCHEDULE_WEEK = Object.freeze({
+  0: { enabled: false, start: '05:00', end: '21:00' },
+  1: { enabled: true, start: '05:00', end: '21:00' },
+  2: { enabled: true, start: '05:00', end: '21:00' },
+  3: { enabled: true, start: '05:00', end: '21:00' },
+  4: { enabled: true, start: '05:00', end: '21:00' },
+  5: { enabled: true, start: '05:00', end: '21:00' },
+  6: { enabled: true, start: '05:00', end: '21:00' },
+});
+
+function defaultScheduleWeekJson() {
+  return JSON.stringify(DEFAULT_SCHEDULE_WEEK);
+}
+
+// Idempotent: accounts without a per-day schedule get the default and the
+// schedule switched on. (Accounts that customised the legacy single window
+// are converted by the 20261027000009_schedule_week migration instead.)
+async function seedScheduleDefaults(prisma) {
+  const result = await prisma.user.updateMany({
+    where: { scheduleWeek: null },
+    data: { scheduleWeek: defaultScheduleWeekJson(), scheduleEnabled: true },
+  });
+  return result.count;
+}
+
 // Idempotent: only accounts that have never saved job filters are touched.
 async function seedJobFilterDefaults(prisma) {
   const result = await prisma.user.updateMany({
@@ -53,6 +81,8 @@ async function main() {
   try {
     const seeded = await seedJobFilterDefaults(prisma);
     console.log(`Seed: job filter defaults applied to ${seeded} account(s)`);
+    const scheduled = await seedScheduleDefaults(prisma);
+    console.log(`Seed: schedule defaults applied to ${scheduled} account(s)`);
   } finally {
     await prisma.$disconnect();
   }
@@ -65,4 +95,7 @@ if (require.main === module) {
   });
 }
 
-module.exports = { DEFAULT_JOB_FILTERS, defaultJobFiltersJson, seedJobFilterDefaults };
+module.exports = {
+  DEFAULT_JOB_FILTERS, defaultJobFiltersJson, seedJobFilterDefaults,
+  DEFAULT_SCHEDULE_WEEK, defaultScheduleWeekJson, seedScheduleDefaults,
+};

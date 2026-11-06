@@ -1,5 +1,6 @@
 const prisma = require('../../config/database');
 const logger = require('../../utils/logger');
+const { resolveScheduleWeek, checkScheduleWeek } = require('./scheduleWeek');
 
 /**
  * Check if current time is within the global schedule window
@@ -15,6 +16,7 @@ async function checkGlobalSchedule() {
         scheduleStartTime: true,
         scheduleEndTime: true,
         scheduleDays: true,
+        scheduleWeek: true,
       },
     });
 
@@ -23,45 +25,10 @@ async function checkGlobalSchedule() {
       return { allowed: true, reason: 'Schedule not enabled' };
     }
 
-    // Validate schedule configuration
-    if (!user.scheduleDays || user.scheduleDays.trim() === '') {
-      logger.error('Schedule check: scheduleDays is empty or invalid');
-      return { allowed: false, reason: 'Invalid schedule configuration: no days configured' };
-    }
-
-    // Get current time in user's timezone
-    const now = new Date();
-    const userTime = getUserTimeInTimezone(now, user.scheduleTimezone);
-
-    // Check day of week
-    const allowedDays = user.scheduleDays.split(',').map(d => parseInt(d)).filter(d => !isNaN(d));
-    if (allowedDays.length === 0) {
-      logger.error('Schedule check: no valid days found in scheduleDays');
-      return { allowed: false, reason: 'Invalid schedule configuration: no valid days' };
-    }
-
-    const currentDay = userTime.day;
-
-    if (!allowedDays.includes(currentDay)) {
-      return {
-        allowed: false,
-        reason: `Day ${currentDay} not in allowed days: ${allowedDays.join(',')}`
-      };
-    }
-
-    // Check time window (if specified)
-    if (user.scheduleStartTime && user.scheduleEndTime) {
-      const currentTime = `${String(userTime.hours).padStart(2, '0')}:${String(userTime.minutes).padStart(2, '0')}`;
-
-      if (currentTime < user.scheduleStartTime || currentTime >= user.scheduleEndTime) {
-        return {
-          allowed: false,
-          reason: `Current time ${currentTime} outside window ${user.scheduleStartTime}-${user.scheduleEndTime}`
-        };
-      }
-    }
-
-    return { allowed: true, reason: 'Within schedule window' };
+    // Per-day windows in the account's timezone
+    const week = resolveScheduleWeek(user);
+    const userTime = getUserTimeInTimezone(new Date(), user.scheduleTimezone);
+    return checkScheduleWeek(week, userTime);
   } catch (err) {
     logger.error(`Schedule check failed: ${err.message}`);
     // Fail open - allow processing if check fails

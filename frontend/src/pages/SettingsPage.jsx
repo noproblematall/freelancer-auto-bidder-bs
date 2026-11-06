@@ -3,6 +3,28 @@ import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
 
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+const DEFAULT_DAY = { enabled: true, start: '05:00', end: '21:00' }
+
+// Always a full 7-day object so every row renders, whatever the API returned
+function normalizeWeek(week) {
+  const out = {}
+  for (let d = 0; d <= 6; d++) {
+    const src = week?.[d] || week?.[String(d)]
+    out[d] = src ? { enabled: src.enabled === true, start: src.start || '05:00', end: src.end || '21:00' } : { ...DEFAULT_DAY, enabled: d !== 0 }
+  }
+  return out
+}
+
+// "05:00" → "5:00 AM"
+function formatClock(time) {
+  const [h, m] = String(time || '').split(':')
+  const hour = parseInt(h, 10)
+  if (isNaN(hour)) return time
+  const ampm = hour >= 12 ? 'PM' : 'AM'
+  return `${hour % 12 === 0 ? 12 : hour % 12}:${m} ${ampm}`
+}
+
 // Settings sections, in display order. The key is used in the URL (?section=…).
 const SECTIONS = [
   { key: 'freelancer', label: 'Freelancer.com' },
@@ -60,9 +82,7 @@ export default function SettingsPage() {
   // Schedule settings
   const [scheduleEnabled, setScheduleEnabled] = useState(user?.schedule?.enabled || false)
   const [timezone, setTimezone] = useState(user?.schedule?.timezone || 'America/New_York')
-  const [startTime, setStartTime] = useState(user?.schedule?.startTime || '09:00')
-  const [endTime, setEndTime] = useState(user?.schedule?.endTime || '17:00')
-  const [activeDays, setActiveDays] = useState(user?.schedule?.days || [1, 2, 3, 4, 5])
+  const [scheduleWeek, setScheduleWeek] = useState(() => normalizeWeek(user?.schedule?.week))
   const [scheduleSaving, setScheduleSaving] = useState(false)
   const [scheduleSaveMessage, setScheduleSaveMessage] = useState(null)
 
@@ -118,9 +138,7 @@ export default function SettingsPage() {
     if (user?.schedule) {
       setScheduleEnabled(user.schedule.enabled || false)
       setTimezone(user.schedule.timezone || 'America/New_York')
-      setStartTime(user.schedule.startTime || '09:00')
-      setEndTime(user.schedule.endTime || '17:00')
-      setActiveDays(user.schedule.days || [1, 2, 3, 4, 5])
+      setScheduleWeek(normalizeWeek(user.schedule.week))
     }
     if (user?.telegram) {
       setTelegramEnabled(user.telegram.enabled || false)
@@ -191,15 +209,10 @@ export default function SettingsPage() {
     { value: 'Australia/Sydney', label: 'Sydney (AEST)' },
   ]
 
-  const DAYS = [
-    { value: 0, label: 'S', name: 'Sunday' },
-    { value: 1, label: 'M', name: 'Monday' },
-    { value: 2, label: 'T', name: 'Tuesday' },
-    { value: 3, label: 'W', name: 'Wednesday' },
-    { value: 4, label: 'T', name: 'Thursday' },
-    { value: 5, label: 'F', name: 'Friday' },
-    { value: 6, label: 'S', name: 'Saturday' },
-  ]
+  // Monday first in the list; keys stay JavaScript days (0 = Sunday)
+  const DAYS = [1, 2, 3, 4, 5, 6, 0].map(value => ({ value, name: DAY_NAMES[value] }))
+  const enabledDayCount = Object.values(scheduleWeek).filter(d => d.enabled).length
+  const hasInvalidWindow = Object.values(scheduleWeek).some(d => d.enabled && d.start >= d.end)
 
   async function handleSaveOpenAI(e) {
     e.preventDefault()
@@ -384,14 +397,12 @@ export default function SettingsPage() {
       await updateSettings({
         scheduleEnabled,
         scheduleTimezone: timezone,
-        scheduleStartTime: startTime,
-        scheduleEndTime: endTime,
-        scheduleDays: activeDays,
+        scheduleWeek,
       })
       setScheduleSaveMessage({ type: 'success', text: 'Schedule saved successfully.' })
       setTimeout(() => setScheduleSaveMessage(null), 4000)
-    } catch {
-      setScheduleSaveMessage({ type: 'error', text: 'Failed to save schedule. Please try again.' })
+    } catch (err) {
+      setScheduleSaveMessage({ type: 'error', text: err.response?.data?.error || 'Failed to save schedule. Please try again.' })
     } finally {
       setScheduleSaving(false)
     }
@@ -466,12 +477,18 @@ export default function SettingsPage() {
     }
   }
 
-  function toggleDay(day) {
-    if (activeDays.includes(day)) {
-      setActiveDays(activeDays.filter(d => d !== day))
-    } else {
-      setActiveDays([...activeDays, day].sort())
-    }
+  function updateDay(day, patch) {
+    setScheduleWeek(prev => ({ ...prev, [day]: { ...prev[day], ...patch } }))
+  }
+
+  // Copy one day's hours onto every enabled day
+  function applyHoursToAll(day) {
+    const { start, end } = scheduleWeek[day]
+    setScheduleWeek(prev => {
+      const next = {}
+      for (const key of Object.keys(prev)) next[key] = prev[key].enabled ? { ...prev[key], start, end } : prev[key]
+      return next
+    })
   }
 
   function getCurrentScheduleStatus() {
@@ -497,16 +514,14 @@ export default function SettingsPage() {
       const currentDay = dayMap[get('weekday')] ?? 0
       const currentTime = `${String(get('hour')).padStart(2, '0')}:${String(get('minute')).padStart(2, '0')}`
 
-      const dayAllowed = activeDays.includes(currentDay)
-      const timeAllowed = currentTime >= startTime && currentTime < endTime
-
-      if (dayAllowed && timeAllowed) {
-        return { active: true, text: 'Currently ACTIVE - auto-bidding will run' }
-      } else if (!dayAllowed) {
-        return { active: false, text: 'Currently PAUSED - today is not an active day' }
-      } else {
-        return { active: false, text: `Currently PAUSED - outside time window (${startTime}-${endTime})` }
+      const today = scheduleWeek[currentDay]
+      if (!today?.enabled) {
+        return { active: false, text: `Currently PAUSED - ${DAY_NAMES[currentDay]} is disabled` }
       }
+      if (currentTime >= today.start && currentTime < today.end) {
+        return { active: true, text: `Currently ACTIVE - auto-bidding runs until ${formatClock(today.end)}` }
+      }
+      return { active: false, text: `Currently PAUSED - outside today's window (${formatClock(today.start)} - ${formatClock(today.end)})` }
     } catch {
       return null
     }
@@ -1462,56 +1477,72 @@ export default function SettingsPage() {
                     </select>
                   </div>
 
-                  {/* Time Window */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label htmlFor="start-time" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                        Start Time
-                      </label>
-                      <input
-                        id="start-time"
-                        type="time"
-                        value={startTime}
-                        onChange={(e) => setStartTime(e.target.value)}
-                        className="w-full px-3.5 py-2.5 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="end-time" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                        End Time
-                      </label>
-                      <input
-                        id="end-time"
-                        type="time"
-                        value={endTime}
-                        onChange={(e) => setEndTime(e.target.value)}
-                        className="w-full px-3.5 py-2.5 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Days of Week */}
+                  {/* Per-day windows */}
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                      Active Days
+                      Active Days &amp; Hours
                     </label>
-                    <div className="flex gap-2">
-                      {DAYS.map(day => (
-                        <button
-                          key={day.value}
-                          type="button"
-                          onClick={() => toggleDay(day.value)}
-                          title={day.name}
-                          className={`flex-1 py-2.5 text-sm font-medium rounded-lg transition-all ${
-                            activeDays.includes(day.value)
-                              ? 'bg-navy-900 dark:bg-emerald-400 text-white dark:text-navy-950 shadow-sm'
-                              : 'bg-slate-100 dark:bg-navy-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-navy-600'
-                          }`}
-                        >
-                          {day.label}
-                        </button>
-                      ))}
+                    <div className="rounded-lg border border-slate-200 dark:border-white/10 divide-y divide-slate-100 dark:divide-white/8 overflow-hidden">
+                      {DAYS.map(day => {
+                        const cfg = scheduleWeek[day.value]
+                        return (
+                          <div
+                            key={day.value}
+                            className={`flex flex-wrap items-center gap-3 px-3 py-2 ${cfg.enabled ? 'bg-white dark:bg-navy-900/40' : 'bg-slate-50 dark:bg-navy-900/70'}`}
+                          >
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={cfg.enabled}
+                              aria-label={`${day.name} enabled`}
+                              onClick={() => updateDay(day.value, { enabled: !cfg.enabled })}
+                              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                                cfg.enabled ? 'bg-indigo-500' : 'bg-slate-300 dark:bg-navy-700'
+                              }`}
+                            >
+                              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                                cfg.enabled ? 'translate-x-4' : 'translate-x-0.5'
+                              }`} />
+                            </button>
+                            <span className={`w-24 text-sm font-medium ${cfg.enabled ? 'text-navy-950 dark:text-white' : 'text-slate-400 dark:text-slate-500'}`}>
+                              {day.name}
+                            </span>
+                            <div className="flex items-center gap-2 ml-auto">
+                              <input
+                                type="time"
+                                aria-label={`${day.name} start time`}
+                                value={cfg.start}
+                                disabled={!cfg.enabled}
+                                onChange={(e) => updateDay(day.value, { start: e.target.value })}
+                                className="px-2.5 py-1.5 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                              />
+                              <span className="text-xs text-slate-400">to</span>
+                              <input
+                                type="time"
+                                aria-label={`${day.name} end time`}
+                                value={cfg.end}
+                                disabled={!cfg.enabled}
+                                onChange={(e) => updateDay(day.value, { end: e.target.value })}
+                                className="px-2.5 py-1.5 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                              />
+                              <button
+                                type="button"
+                                disabled={!cfg.enabled}
+                                onClick={() => applyHoursToAll(day.value)}
+                                title={`Use ${day.name}'s hours for every enabled day`}
+                                className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-0"
+                              >
+                                Apply to all
+                              </button>
+                            </div>
+                            {cfg.enabled && cfg.start >= cfg.end && (
+                              <p className="w-full text-xs text-amber-600 dark:text-amber-400">Start time must be before end time.</p>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">Times are in the timezone above. Switch a day off to skip it entirely.</p>
                   </div>
 
                   {/* Current Status Display */}
@@ -1537,14 +1568,14 @@ export default function SettingsPage() {
               <div className="pt-1">
                 <button
                   onClick={handleSaveSchedule}
-                  disabled={scheduleSaving || (scheduleEnabled && activeDays.length === 0)}
+                  disabled={scheduleSaving || (scheduleEnabled && (enabledDayCount === 0 || hasInvalidWindow))}
                   className="w-full py-2.5 text-sm font-medium text-white dark:text-navy-950 bg-navy-900 dark:bg-emerald-400 rounded-lg hover:bg-navy-800 dark:hover:bg-emerald-500 transition-colors shadow-sm disabled:opacity-50"
                 >
                   {scheduleSaving ? 'Saving...' : 'Save Schedule'}
                 </button>
-                {scheduleEnabled && activeDays.length === 0 && (
+                {scheduleEnabled && enabledDayCount === 0 && (
                   <p className="text-sm font-medium text-center mt-2 text-amber-600 dark:text-amber-400">
-                    Please select at least one day
+                    Enable at least one day
                   </p>
                 )}
                 {!scheduleEnabled && user?.schedule?.enabled && (
