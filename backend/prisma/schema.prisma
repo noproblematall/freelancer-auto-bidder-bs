@@ -18,6 +18,16 @@ model User {
 
   // Bidding Settings
   bidDelaySeconds Float   @default(30)    @map("bid_delay_seconds")
+  // The freelancer's hourly rate in USD, shared by every bid profile: the rate
+  // bid on hourly projects and the basis for fixed-price delivery estimates.
+  hourlyRate          Float?   @map("hourly_rate")
+  // Delivery period bounds for AI-estimated periods, shared by every profile:
+  // the estimate is kept between min and max days, and the fallback is
+  // promised when nothing can be estimated.
+  periodMinDays       Int?     @map("period_min_days")
+  periodMaxDays       Int?     @map("period_max_days")
+  periodFallbackDays  Int      @default(7) @map("period_fallback_days")
+  aiBidPercentage     Int      @default(100) @map("ai_bid_percentage")          // % of the AI-suggested amount to bid
   sealBids        Boolean @default(false) @map("seal_bids")
   // Account-wide bid caps (Settings → Auto-Bidding); shared by every profile
   maxBidsPerHour  Int     @default(8)     @map("max_bids_per_hour")
@@ -105,24 +115,24 @@ model BiddingProfile {
   budgetMaxFixed      Float?   @map("budget_max_fixed")
   budgetMinHourly     Float?   @map("budget_min_hourly")
   budgetMaxHourly     Float?   @map("budget_max_hourly")
-  projectTypes        String   @default("both") @map("project_types")
   countries           String?
   excludedCountries   String?  @map("excluded_countries")
   excludedRegions     String?  @map("excluded_regions")
   countryExceptions   String?  @map("country_exceptions")
   excludedCurrencies  String?  @map("excluded_currencies")
   languages           String?
-  // Bidding parameters
-  bidAmountStrategy   String   @default("auto") @map("bid_amount_strategy")
-  fixedBidAmount      Float?   @map("fixed_bid_amount")
-  fixedHourlyRate     Float?   @map("fixed_hourly_rate")
-  bidPercentage       Float?   @map("bid_percentage")
-  periodDaysStrategy  String   @default("fixed") @map("period_days_strategy")
-  defaultPeriodDays   Int      @default(7) @map("default_period_days")
-  defaultHourlyRate   Float?   @map("default_hourly_rate")
-  minPeriodDays       Int?     @map("min_period_days")
-  maxPeriodDays       Int?     @map("max_period_days")
-  milestonePercentage Int      @default(100) @map("milestone_percentage")
+  // Bidding parameters: every profile bids on both fixed-price and hourly
+  // projects; each kind is priced and scheduled with its own settings. The
+  // freelancer's hourly rate and the delivery period bounds are account-wide
+  // (User.hourlyRate, User.periodMinDays/periodMaxDays/periodFallbackDays).
+  //
+  // Fixed-price projects
+  fixedBidStrategy    String   @default("ai") @map("fixed_bid_strategy")         // ai | percentage
+  bidPercentage       Float?   @map("bid_percentage")                            // % of max budget, strategy "percentage"
+  fixedPeriodStrategy String   @default("ai") @map("fixed_period_strategy")      // ai | fixed (fixed = User.periodFallbackDays)
+  // Hourly projects
+  hourlyRateStrategy  String   @default("my_rate") @map("hourly_rate_strategy")  // my_rate | ai
+  hourlyPeriodStrategy String  @default("ai") @map("hourly_period_strategy")     // ai | fixed (fixed = User.periodFallbackDays)
   // AI settings
   minRelevanceScore   Int      @default(70) @map("min_relevance_score")
   proposalPrompt      String?  @map("proposal_prompt")

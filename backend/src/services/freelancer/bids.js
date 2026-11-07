@@ -1,13 +1,17 @@
 const logger = require('../../utils/logger');
 
-async function placeBid(client, { projectId, bidderId, amount, period, milestonePercentage, description, sealed }) {
+// Freelancer requires milestone_percentage on every bid. The website's own
+// bid form never asks for it and sends 100, so we do the same.
+const MILESTONE_PERCENTAGE = 100;
+
+async function placeBid(client, { projectId, bidderId, amount, period, description, sealed }) {
   try {
     const body = {
       project_id: projectId,
       bidder_id: bidderId,
       amount,
       period,
-      milestone_percentage: milestonePercentage,
+      milestone_percentage: MILESTONE_PERCENTAGE,
       description,
     };
     // `sealed` is not in the official POST docs, but the bid object exposes a
@@ -82,4 +86,4 @@ async function retractBid(client, freelancerBidId) {
   return response.data;
 }
 
-module.exports = { placeBid, getBids, retractBid, sealBid, getBidById };
+module.exports = { MILESTONE_PERCENTAGE, placeBid, getBids, retractBid, sealBid, getBidById };

@@ -2,12 +2,18 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useProfiles } from '../hooks/useProfiles'
 import { useConfirm } from '../components/ConfirmDialog'
+import { useAuth } from '../context/AuthContext'
 
-const STRATEGY_LABELS = {
-  auto: 'AI Auto',
-  fixed: 'Fixed',
-  percentage: '% of Budget',
+// One-line summaries of how a profile prices each project kind
+function fixedBidSummary(p) {
+  if (p.fixedBidStrategy === 'percentage' && p.bidPercentage) return `${p.bidPercentage}% of budget`
+  return 'AI amount'
 }
+function hourlyRateSummary(p, accountRate) {
+  if (p.hourlyRateStrategy === 'ai') return 'AI rate'
+  return accountRate ? `$${accountRate}/hr` : 'my rate'
+}
+const periodSummary = (strategy, fallbackDays) => (strategy === 'fixed' ? `${fallbackDays}d` : 'AI days')
 
 const REGION_LABELS = {
   north_america: 'North America', central_america: 'Central America',
@@ -33,6 +39,8 @@ function countryName(code) {
 export default function ProfilesPage() {
   const { profiles, loading, error, fetchProfiles, remove, duplicate, activate, deactivate } = useProfiles()
   const confirm = useConfirm()
+  const { user } = useAuth()
+  const fallbackDays = user?.periodFallbackDays > 0 ? user.periodFallbackDays : 7
   const navigate = useNavigate()
   const [togglingId, setTogglingId] = useState(null)
   const [duplicatingId, setDuplicatingId] = useState(null)
@@ -210,10 +218,6 @@ export default function ProfilesPage() {
                     <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Keywords</span>
                     <span className="font-medium text-slate-700 dark:text-slate-200">{profile.searchKeywords || <span className="text-slate-400 dark:text-slate-600 italic">Any</span>}</span>
                   </div>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Type</span>
-                    <span className="font-medium text-slate-700 dark:text-slate-200 capitalize">{profile.projectTypes === 'both' ? 'Fixed+Hourly' : profile.projectTypes || 'Both'}</span>
-                  </div>
                   {profile.languages && (
                     <div className="flex items-baseline gap-1">
                       <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Lang</span>
@@ -233,18 +237,15 @@ export default function ProfilesPage() {
                     </div>
                   )}
                   <div className="flex items-baseline gap-1">
-                    <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Bid</span>
+                    <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Fixed</span>
                     <span className="font-medium text-slate-700 dark:text-slate-200">
-                      {STRATEGY_LABELS[profile.bidAmountStrategy] || profile.bidAmountStrategy}
-                      {profile.bidAmountStrategy === 'fixed' && profile.fixedBidAmount && <span> ${profile.fixedBidAmount}</span>}
-                      {profile.bidAmountStrategy === 'percentage' && profile.bidPercentage && <span> {profile.bidPercentage}%</span>}
+                      {fixedBidSummary(profile)} · {periodSummary(profile.fixedPeriodStrategy, fallbackDays)}
                     </span>
                   </div>
                   <div className="flex items-baseline gap-1">
-                    <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Delivery</span>
+                    <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Hourly</span>
                     <span className="font-medium text-slate-700 dark:text-slate-200">
-                      {profile.periodDaysStrategy === 'ai' ? 'AI' : `${profile.defaultPeriodDays}d`}
-                      {profile.milestonePercentage != null && <span className="text-slate-400 dark:text-slate-500"> · {profile.milestonePercentage}%</span>}
+                      {hourlyRateSummary(profile, user?.hourlyRate)} · {periodSummary(profile.hourlyPeriodStrategy, fallbackDays)}
                     </span>
                   </div>
                   <div className="flex items-baseline gap-1">

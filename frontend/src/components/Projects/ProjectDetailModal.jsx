@@ -42,7 +42,6 @@ export default function ProjectDetailModal({ project, isOpen, onClose, onProject
   const [showBidForm, setShowBidForm] = useState(false)
   const [bidAmount, setBidAmount] = useState('')
   const [bidPeriod, setBidPeriod] = useState('7')
-  const [bidMilestone, setBidMilestone] = useState('100')
   const [placing, setPlacing] = useState(false)
   const [bidSuccess, setBidSuccess] = useState(false)
   const [bidError, setBidError] = useState(null)
@@ -59,7 +58,6 @@ export default function ProjectDetailModal({ project, isOpen, onClose, onProject
       setShowBidForm(false)
       setBidAmount('')
       setBidPeriod('7')
-      setBidMilestone('100')
       setPlacing(false)
       setBidSuccess(false)
       setBidError(null)
@@ -134,10 +132,6 @@ export default function ProjectDetailModal({ project, isOpen, onClose, onProject
     if (!Number.isInteger(periodDays) || periodDays < 1) {
       return setBidError('Enter a delivery period of at least 1 day.')
     }
-    const milestonePercentage = parseInt(bidMilestone, 10)
-    if (!Number.isInteger(milestonePercentage) || milestonePercentage < 0 || milestonePercentage > 100) {
-      return setBidError('Milestone percentage must be a number between 0 and 100.')
-    }
 
     setPlacing(true)
     setBidError(null)
@@ -146,7 +140,6 @@ export default function ProjectDetailModal({ project, isOpen, onClose, onProject
         projectId: project.id,
         amount: parseFloat(bidAmount),
         periodDays,
-        milestonePercentage,
         proposalText: proposal,
       })
       setBidSuccess(true)
@@ -529,7 +522,7 @@ export default function ProjectDetailModal({ project, isOpen, onClose, onProject
           {showBidForm && (
             <div className="space-y-3 p-4 rounded-lg bg-navy-50 dark:bg-navy-800/50 border border-navy-200 dark:border-white/8">
               <p className="text-xs font-semibold text-navy-800 dark:text-slate-200 uppercase tracking-wide">Place Your Bid</p>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 uppercase mb-1">Amount ({currencySymbol(project.currency)})</label>
                   <input
@@ -549,17 +542,6 @@ export default function ProjectDetailModal({ project, isOpen, onClose, onProject
                     value={bidPeriod}
                     onChange={(e) => setBidPeriod(e.target.value)}
                     min="1"
-                    className="w-full px-3 py-2 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500/20 focus:border-navy-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 uppercase mb-1">Milestone %</label>
-                  <input
-                    type="number"
-                    value={bidMilestone}
-                    onChange={(e) => setBidMilestone(e.target.value)}
-                    min="0"
-                    max="100"
                     className="w-full px-3 py-2 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500/20 focus:border-navy-500"
                   />
                 </div>

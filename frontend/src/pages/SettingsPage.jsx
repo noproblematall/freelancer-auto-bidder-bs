@@ -56,6 +56,14 @@ export default function SettingsPage() {
   const [maxBidsPerHour, setMaxBidsPerHour] = useState(user?.maxBidsPerHour ?? 8)
   const [maxBidsPerDay, setMaxBidsPerDay] = useState(user?.maxBidsPerDay ?? 80)
   const [rateLimitMessage, setRateLimitMessage] = useState(null)
+  const [hourlyRate, setHourlyRate] = useState(user?.hourlyRate ?? '')
+  const [hourlyRateMessage, setHourlyRateMessage] = useState(null)
+  const [aiBidPercentage, setAiBidPercentage] = useState(user?.aiBidPercentage ?? 100)
+  const [aiBidPercentageMessage, setAiBidPercentageMessage] = useState(null)
+  const [periodMinDays, setPeriodMinDays] = useState(user?.periodMinDays ?? '')
+  const [periodMaxDays, setPeriodMaxDays] = useState(user?.periodMaxDays ?? '')
+  const [periodFallbackDays, setPeriodFallbackDays] = useState(user?.periodFallbackDays ?? 7)
+  const [periodMessage, setPeriodMessage] = useState(null)
   const [reviewMode, setReviewMode] = useState(user?.reviewMode || false)
   const [skillsSummary, setSkillsSummary] = useState(user?.skillsSummary || '')
   const [experienceSummary, setExperienceSummary] = useState(user?.experienceSummary || '')
@@ -79,8 +87,7 @@ export default function SettingsPage() {
   const [callbackErrorReason, setCallbackErrorReason] = useState(null)
   const [schedulerStatus, setSchedulerStatus] = useState(null)
   const [activeProfileCount, setActiveProfileCount] = useState(0)
-  const [triggering, setTriggering] = useState(false)
-  const [triggerMessage, setTriggerMessage] = useState(null)
+  const [schedulerMessage, setSchedulerMessage] = useState(null)
 
   // Schedule settings
   const [scheduleEnabled, setScheduleEnabled] = useState(user?.schedule?.enabled || false)
@@ -134,6 +141,11 @@ export default function SettingsPage() {
     }
     if (user?.maxBidsPerHour !== undefined) setMaxBidsPerHour(user.maxBidsPerHour)
     if (user?.maxBidsPerDay !== undefined) setMaxBidsPerDay(user.maxBidsPerDay)
+    if (user?.hourlyRate !== undefined) setHourlyRate(user.hourlyRate ?? '')
+    if (user?.aiBidPercentage !== undefined) setAiBidPercentage(user.aiBidPercentage ?? 100)
+    if (user?.periodMinDays !== undefined) setPeriodMinDays(user.periodMinDays ?? '')
+    if (user?.periodMaxDays !== undefined) setPeriodMaxDays(user.periodMaxDays ?? '')
+    if (user?.periodFallbackDays !== undefined) setPeriodFallbackDays(user.periodFallbackDays ?? 7)
     if (user?.reviewMode !== undefined) setReviewMode(user.reviewMode)
     if (user?.skillsSummary !== undefined) setSkillsSummary(user.skillsSummary || '')
     if (user?.experienceSummary !== undefined) setExperienceSummary(user.experienceSummary || '')
@@ -298,6 +310,54 @@ export default function SettingsPage() {
   }
 
   // Save a rate-limit field on blur (same pattern as bid delay): clamp, persist, report.
+  async function saveHourlyRate(raw) {
+    let value = Math.round(parseFloat(raw) * 100) / 100
+    if (isNaN(value) || value < 1) value = 1
+    if (value > 1000) value = 1000
+    setHourlyRate(value)
+    setHourlyRateMessage(null)
+    try {
+      await updateSettings({ hourlyRate: value })
+      setHourlyRateMessage({ type: 'success', text: 'Saved.' })
+      setTimeout(() => setHourlyRateMessage(null), 2500)
+    } catch {
+      setHourlyRateMessage({ type: 'error', text: 'Failed to save hourly rate — try again.' })
+    }
+  }
+
+  // Share of the AI-suggested amount to bid (1–200%), saved on blur
+  async function saveAiBidPercentage(raw) {
+    let value = Math.round(parseFloat(raw))
+    if (isNaN(value) || value < 1) value = 100
+    if (value > 200) value = 200
+    setAiBidPercentage(value)
+    setAiBidPercentageMessage(null)
+    try {
+      await updateSettings({ aiBidPercentage: value })
+      setAiBidPercentageMessage({ type: 'success', text: 'Saved.' })
+      setTimeout(() => setAiBidPercentageMessage(null), 2500)
+    } catch {
+      setAiBidPercentageMessage({ type: 'error', text: 'Failed to save — try again.' })
+    }
+  }
+
+  // Delivery period bounds: min/max may be blank (no bound); fallback must be a day count
+  async function savePeriodDays(field, raw, setter, { required = false } = {}) {
+    let value = raw === '' || raw === null ? null : Math.round(parseFloat(raw))
+    if (value !== null && (isNaN(value) || value < 1)) value = 1
+    if (value !== null && value > 365) value = 365
+    if (required && value === null) value = 7
+    setter(value ?? '')
+    setPeriodMessage(null)
+    try {
+      await updateSettings({ [field]: value })
+      setPeriodMessage({ type: 'success', text: 'Saved.' })
+      setTimeout(() => setPeriodMessage(null), 2500)
+    } catch (err) {
+      setPeriodMessage({ type: 'error', text: err.response?.data?.error || 'Failed to save delivery period — try again.' })
+    }
+  }
+
   async function saveRateLimit(field, raw, max, setter) {
     let value = parseInt(raw, 10)
     if (isNaN(value) || value < 1) value = 1
@@ -314,29 +374,13 @@ export default function SettingsPage() {
   }
 
   async function handleToggleScheduler() {
+    setSchedulerMessage(null)
     const endpoint = schedulerStatus?.running ? '/scheduler/stop' : '/scheduler/start'
     try {
       const { data } = await api.post(endpoint)
       setSchedulerStatus(data)
     } catch (err) {
-      setTriggerMessage({
-        type: 'error',
-        text: err.response?.data?.error || ('Failed to ' + (schedulerStatus?.running ? 'stop' : 'start') + ' the auto-bidder.'),
-      })
-    }
-  }
-
-  async function handleTrigger() {
-    setTriggering(true)
-    setTriggerMessage(null)
-    try {
-      await api.post('/scheduler/trigger')
-      setTriggerMessage({ type: 'success', text: 'Auto-bid run triggered. Check Bids page for results.' })
-      setTimeout(() => setTriggerMessage(null), 5000)
-    } catch (err) {
-      setTriggerMessage({ type: 'error', text: err.response?.data?.error || 'Failed to trigger run' })
-    } finally {
-      setTriggering(false)
+      setSchedulerMessage(err.response?.data?.error || ('Failed to ' + (schedulerStatus?.running ? 'stop' : 'start') + ' the auto-bidder.'))
     }
   }
 
@@ -1231,9 +1275,14 @@ export default function SettingsPage() {
                   <p className="text-sm font-medium text-navy-950 dark:text-white">Growlance</p>
                   <p className="text-xs text-slate-700 dark:text-slate-200 mt-0.5">
                     {schedulerRunning
-                      ? schedulerStatus?.processing ? 'Currently processing active profiles...' : 'Runs every minute for all active profiles'
+                      ? schedulerStatus?.processing ? 'Currently processing active profiles...'
+                        : activeProfileCount === 0 ? 'Running, but no bid profile is active — activate one under Bid Profiles'
+                        : 'Runs every minute for all active profiles'
                       : 'Scheduler is stopped — no automatic bidding'}
                   </p>
+                  {schedulerMessage && (
+                    <p className="text-xs font-medium text-red-600 dark:text-red-400 mt-1">{schedulerMessage}</p>
+                  )}
                 </div>
                 <button
                   onClick={handleToggleScheduler}
@@ -1289,6 +1338,67 @@ export default function SettingsPage() {
                 </div>
                 <p className="text-xs text-slate-700 dark:text-slate-200 mt-2">
                   Time to wait between placing bids to avoid rate limiting. Recommended: 30s or more.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-lg bg-slate-50 dark:bg-navy-900/50 border border-slate-200 dark:border-white/8">
+                <label htmlFor="hourly-rate" className="block text-sm font-medium text-navy-950 dark:text-white mb-2">
+                  Your Hourly Rate
+                </label>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-slate-700 dark:text-slate-200">$</span>
+                  <input
+                    id="hourly-rate"
+                    type="number"
+                    min="1"
+                    max="1000"
+                    step="1"
+                    value={hourlyRate}
+                    onChange={(e) => setHourlyRate(e.target.value)}
+                    onBlur={(e) => saveHourlyRate(e.target.value)}
+                    className="w-24 px-3 py-2 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500/20 focus:border-navy-500 transition-colors"
+                  />
+                  <span className="text-sm text-slate-700 dark:text-slate-200">USD per hour</span>
+                  {hourlyRateMessage && (
+                    <span className={`text-xs font-medium ${
+                      hourlyRateMessage.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                    }`}>
+                      {hourlyRateMessage.text}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-700 dark:text-slate-200 mt-2">
+                  Shared by every bid profile: bid as-is on hourly projects (converted to the project's currency) and used to estimate delivery time on fixed-price projects.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-lg bg-slate-50 dark:bg-navy-900/50 border border-slate-200 dark:border-white/8">
+                <label htmlFor="ai-bid-percentage" className="block text-sm font-medium text-navy-950 dark:text-white mb-2">
+                  AI-Suggested Bid Amount
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    id="ai-bid-percentage"
+                    type="number"
+                    min="1"
+                    max="200"
+                    step="1"
+                    value={aiBidPercentage}
+                    onChange={(e) => setAiBidPercentage(e.target.value)}
+                    onBlur={(e) => saveAiBidPercentage(e.target.value)}
+                    className="w-24 px-3 py-2 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500/20 focus:border-navy-500 transition-colors"
+                  />
+                  <span className="text-sm text-slate-700 dark:text-slate-200">% of the AI's suggested price</span>
+                  {aiBidPercentageMessage && (
+                    <span className={`text-xs font-medium ${
+                      aiBidPercentageMessage.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                    }`}>
+                      {aiBidPercentageMessage.text}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-700 dark:text-slate-200 mt-2">
+                  Applies when a profile's fixed-price bid amount is "AI-suggested": at 80%, an AI price of $500 is bid as $400. The bid is still kept inside the client's budget range. 100 bids the AI's price as-is.
                 </p>
               </div>
 
@@ -1404,6 +1514,66 @@ export default function SettingsPage() {
                 </div>
               </div>
 
+              <div className="p-4 rounded-lg bg-slate-50 dark:bg-navy-900/50 border border-slate-200 dark:border-white/8">
+                <p className="text-sm font-medium text-navy-950 dark:text-white mb-2">Delivery Period</p>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label htmlFor="period-min-days" className="block text-xs font-medium text-slate-700 dark:text-slate-200 mb-1.5">Min Days</label>
+                    <input
+                      id="period-min-days"
+                      type="number"
+                      min="1"
+                      max="365"
+                      step="1"
+                      placeholder="none"
+                      value={periodMinDays}
+                      onChange={(e) => setPeriodMinDays(e.target.value)}
+                      onBlur={(e) => savePeriodDays('periodMinDays', e.target.value, setPeriodMinDays)}
+                      className="w-full px-3 py-2 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500/20 focus:border-navy-500 transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="period-max-days" className="block text-xs font-medium text-slate-700 dark:text-slate-200 mb-1.5">Max Days</label>
+                    <input
+                      id="period-max-days"
+                      type="number"
+                      min="1"
+                      max="365"
+                      step="1"
+                      placeholder="none"
+                      value={periodMaxDays}
+                      onChange={(e) => setPeriodMaxDays(e.target.value)}
+                      onBlur={(e) => savePeriodDays('periodMaxDays', e.target.value, setPeriodMaxDays)}
+                      className="w-full px-3 py-2 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500/20 focus:border-navy-500 transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="period-fallback-days" className="block text-xs font-medium text-slate-700 dark:text-slate-200 mb-1.5">Fallback (days)</label>
+                    <input
+                      id="period-fallback-days"
+                      type="number"
+                      min="1"
+                      max="365"
+                      step="1"
+                      value={periodFallbackDays}
+                      onChange={(e) => setPeriodFallbackDays(e.target.value)}
+                      onBlur={(e) => savePeriodDays('periodFallbackDays', e.target.value, setPeriodFallbackDays, { required: true })}
+                      className="w-full px-3 py-2 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500/20 focus:border-navy-500 transition-colors"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-slate-700 dark:text-slate-200 mt-2">
+                  For bid profiles using an AI-suggested delivery period: the estimate is kept between Min and Max days (leave blank for no bound), and Fallback is promised when nothing can be estimated.
+                  {periodMessage && (
+                    <span className={`ml-2 font-medium ${
+                      periodMessage.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                    }`}>
+                      {periodMessage.text}
+                    </span>
+                  )}
+                </p>
+              </div>
+
               <form onSubmit={handleSavePrompt} className="p-4 rounded-lg bg-slate-50 dark:bg-navy-900/50 border border-slate-200 dark:border-white/8">
                 <div className="flex items-start justify-between gap-4 mb-2">
                   <div>
@@ -1449,31 +1619,6 @@ export default function SettingsPage() {
                 </div>
               </form>
 
-              <div className="pt-1">
-                <button
-                  onClick={handleTrigger}
-                  disabled={triggering || activeProfileCount === 0}
-                  className="w-full py-2.5 text-sm font-medium text-white dark:text-navy-950 bg-navy-900 dark:bg-emerald-400 rounded-lg hover:bg-navy-800 dark:hover:bg-emerald-500 transition-colors shadow-sm disabled:opacity-50"
-                >
-                  {triggering ? 'Running...' : 'Run Growlance Now'}
-                </button>
-                {activeProfileCount > 0 ? (
-                  <p className="text-xs text-slate-700 dark:text-slate-200 text-center mt-2">
-                    Runs immediately for all active profiles: searches for new projects, analyzes relevance, generates proposals, and places bids.
-                  </p>
-                ) : (
-                  <p className="text-xs text-slate-500 dark:text-slate-400 text-center mt-2">
-                    Activate a bidding profile first to enable auto-bidding.
-                  </p>
-                )}
-                {triggerMessage && (
-                  <p className={`text-sm font-medium text-center mt-2 ${
-                    triggerMessage.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
-                  }`}>
-                    {triggerMessage.text}
-                  </p>
-                )}
-              </div>
             </div>
           </div>
           )}

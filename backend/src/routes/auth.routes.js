@@ -10,7 +10,7 @@ const { createFreelancerClient } = require('../services/freelancer/client');
 const { getSelf } = require('../services/freelancer/users');
 const { isValidWebhookUrl } = require('../services/notifications/webhook');
 const logger = require('../utils/logger');
-const { defaultJobFiltersJson, defaultScheduleWeekJson, defaultFreelancerProfile } = require('../../prisma/seed');
+const { defaultJobFiltersJson, defaultScheduleWeekJson, defaultFreelancerProfile, DEFAULT_HOURLY_RATE } = require('../../prisma/seed');
 const { resolveScheduleWeek, validateScheduleWeek, serializeScheduleWeek } = require('../services/bidding/scheduleWeek');
 const { loadDefaultPrompt } = require('../services/openai/promptLoader');
 
@@ -34,7 +34,7 @@ router.post('/register', async (req, res, next) => {
 
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await prisma.user.create({
-      data: { email, passwordHash, jobFilters: defaultJobFiltersJson(), scheduleWeek: defaultScheduleWeekJson(), scheduleEnabled: true, ...defaultFreelancerProfile() },
+      data: { email, passwordHash, jobFilters: defaultJobFiltersJson(), scheduleWeek: defaultScheduleWeekJson(), scheduleEnabled: true, hourlyRate: DEFAULT_HOURLY_RATE, ...defaultFreelancerProfile() },
     });
 
     const token = jwt.sign({ userId: user.id }, env.jwtSecret, { expiresIn: '7d' });
@@ -66,7 +66,7 @@ router.post('/local-session', async (req, res, next) => {
       // and keeps /login unusable for this account by guessing.
       const passwordHash = await bcrypt.hash(require('crypto').randomBytes(32).toString('hex'), 12);
       user = await prisma.user.create({
-        data: { email: 'local@growlance.app', passwordHash, jobFilters: defaultJobFiltersJson(), scheduleWeek: defaultScheduleWeekJson(), scheduleEnabled: true, ...defaultFreelancerProfile() },
+        data: { email: 'local@growlance.app', passwordHash, jobFilters: defaultJobFiltersJson(), scheduleWeek: defaultScheduleWeekJson(), scheduleEnabled: true, hourlyRate: DEFAULT_HOURLY_RATE, ...defaultFreelancerProfile() },
       });
       logger.info('Local user created for silent session');
     }
@@ -370,6 +370,11 @@ router.get('/status', authMiddleware, async (req, res, next) => {
         sealBids: true,
         maxBidsPerHour: true,
         maxBidsPerDay: true,
+        hourlyRate: true,
+        periodMinDays: true,
+        periodMaxDays: true,
+        periodFallbackDays: true,
+        aiBidPercentage: true,
         reviewMode: true,
         skillsSummary: true,
         experienceSummary: true,
@@ -412,6 +417,11 @@ router.get('/status', authMiddleware, async (req, res, next) => {
         sealBids: user.sealBids,
         maxBidsPerHour: user.maxBidsPerHour,
         maxBidsPerDay: user.maxBidsPerDay,
+        hourlyRate: user.hourlyRate,
+        periodMinDays: user.periodMinDays,
+        periodMaxDays: user.periodMaxDays,
+        periodFallbackDays: user.periodFallbackDays,
+        aiBidPercentage: user.aiBidPercentage,
         reviewMode: user.reviewMode,
         skillsSummary: user.skillsSummary || '',
         experienceSummary: user.experienceSummary || '',
@@ -505,6 +515,11 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
       sealBids,
       maxBidsPerHour,
       maxBidsPerDay,
+      hourlyRate,
+      periodMinDays,
+      periodMaxDays,
+      periodFallbackDays,
+      aiBidPercentage,
       reviewMode,
       skillsSummary,
       experienceSummary,
@@ -629,6 +644,57 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
         return res.status(400).json({ error: 'Max bids per day must be between 1 and 10000' });
       }
       data.maxBidsPerDay = n;
+    }
+
+    // The freelancer's hourly rate (USD/hr), shared by every profile: bid on
+    // hourly projects and used for fixed-price delivery estimates.
+    if (hourlyRate !== undefined) {
+      const rate = parseFloat(hourlyRate);
+      if (isNaN(rate) || rate < 1 || rate > 1000) {
+        return res.status(400).json({ error: 'Hourly rate must be between 1 and 1000 USD' });
+      }
+      data.hourlyRate = Math.round(rate * 100) / 100;
+    }
+
+    // Percentage of the AI-suggested amount to bid on fixed-price projects
+    // (shared by every profile; 100 = bid the suggestion as-is).
+    if (aiBidPercentage !== undefined) {
+      const pct = parseInt(aiBidPercentage);
+      if (isNaN(pct) || pct < 1 || pct > 200) {
+        return res.status(400).json({ error: 'AI bid percentage must be between 1 and 200' });
+      }
+      data.aiBidPercentage = pct;
+    }
+
+    // Delivery period bounds for AI-estimated periods (shared by every profile):
+    // min/max may be blank (no bound); the fallback is always a day count.
+    const parseDays = (raw) => {
+      if (raw === null || raw === '') return null;
+      const n = Number(raw);
+      return Number.isInteger(n) && n >= 1 && n <= 365 ? n : NaN;
+    };
+    if (periodMinDays !== undefined) {
+      const n = parseDays(periodMinDays);
+      if (Number.isNaN(n)) return res.status(400).json({ error: 'Minimum delivery days must be between 1 and 365, or blank' });
+      data.periodMinDays = n;
+    }
+    if (periodMaxDays !== undefined) {
+      const n = parseDays(periodMaxDays);
+      if (Number.isNaN(n)) return res.status(400).json({ error: 'Maximum delivery days must be between 1 and 365, or blank' });
+      data.periodMaxDays = n;
+    }
+    if (periodFallbackDays !== undefined) {
+      const n = parseDays(periodFallbackDays);
+      if (n === null || Number.isNaN(n)) return res.status(400).json({ error: 'Fallback delivery days must be between 1 and 365' });
+      data.periodFallbackDays = n;
+    }
+    if (data.periodMinDays !== undefined || data.periodMaxDays !== undefined) {
+      const current = await prisma.user.findUnique({ where: { id: req.userId }, select: { periodMinDays: true, periodMaxDays: true } });
+      const min = data.periodMinDays !== undefined ? data.periodMinDays : current?.periodMinDays;
+      const max = data.periodMaxDays !== undefined ? data.periodMaxDays : current?.periodMaxDays;
+      if (min != null && max != null && min > max) {
+        return res.status(400).json({ error: 'Minimum delivery days cannot be greater than maximum' });
+      }
     }
 
     // Review-before-sending applies to every profile
@@ -804,6 +870,11 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
       sealBids: true,
       maxBidsPerHour: true,
       maxBidsPerDay: true,
+      hourlyRate: true,
+      periodMinDays: true,
+      periodMaxDays: true,
+      periodFallbackDays: true,
+      aiBidPercentage: true,
       reviewMode: true,
       skillsSummary: true,
       experienceSummary: true,
@@ -877,6 +948,11 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
         sealBids: user.sealBids,
         maxBidsPerHour: user.maxBidsPerHour,
         maxBidsPerDay: user.maxBidsPerDay,
+        hourlyRate: user.hourlyRate,
+        periodMinDays: user.periodMinDays,
+        periodMaxDays: user.periodMaxDays,
+        periodFallbackDays: user.periodFallbackDays,
+        aiBidPercentage: user.aiBidPercentage,
         reviewMode: user.reviewMode,
         skillsSummary: user.skillsSummary || '',
         experienceSummary: user.experienceSummary || '',

@@ -20,20 +20,6 @@ router.get('/status', async (req, res, next) => {
   }
 });
 
-// POST /api/scheduler/trigger — Manually trigger a run now
-router.post('/trigger', async (req, res) => {
-  const status = scheduler.getStatus();
-  if (status.processing) {
-    return res.status(409).json({ error: 'A run is already in progress' });
-  }
-
-  logger.info(`Manual scheduler trigger by user ${req.userId}`);
-  scheduler.runAllActiveProfiles()
-    .catch(err => logger.error(`Manual trigger failed: ${err.message}`));
-
-  res.json({ message: 'Scheduler run triggered' });
-});
-
 // POST /api/scheduler/stop — Stop the scheduler
 router.post('/stop', (req, res) => {
   scheduler.stop();

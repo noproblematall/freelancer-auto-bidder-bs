@@ -596,7 +596,6 @@ export default function BidsPage() {
                         ) : null
                       })()}
                       <span>{bid.periodDays} days</span>
-                      <span>{bid.milestonePercentage}% milestone</span>
                       {bid.profile && <span className="text-navy-500 dark:text-emerald-400">via {bid.profile.name}</span>}
                       {bid.placedAt && <span>{timeAgo(bid.placedAt)}</span>}
                       {!bid.placedAt && bid.createdAt && <span>{timeAgo(bid.createdAt)}</span>}

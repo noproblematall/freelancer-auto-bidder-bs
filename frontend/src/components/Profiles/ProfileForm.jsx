@@ -1,53 +1,89 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import { useAuth } from '../../context/AuthContext'
 import { inputClass, labelClass, sectionLabel, card } from './formStyles'
 import SegmentedControl from '../SegmentedControl'
 
+const hint = 'text-xs text-slate-500 dark:text-slate-400 mt-1'
+
+// Every profile bids on both fixed-price and hourly projects; each kind has
+// its own pricing and delivery settings below. The hourly rate itself is
+// account-wide (Settings → Auto-Bidding).
 const INITIAL_STATE = {
   name: '',
   searchKeywords: '',
-  projectTypes: 'both',
-  bidAmountStrategy: 'auto',
-  fixedBidAmount: '',
-  fixedHourlyRate: '',
+  // Fixed-price projects
+  fixedBidStrategy: 'ai',
   bidPercentage: '',
-  periodDaysStrategy: 'fixed',
-  defaultPeriodDays: '7',
-  defaultHourlyRate: '',
-  minPeriodDays: '',
-  maxPeriodDays: '',
-  milestonePercentage: '100',
+  fixedPeriodStrategy: 'ai',
+  // Hourly projects
+  hourlyRateStrategy: 'my_rate',
+  hourlyPeriodStrategy: 'ai',
+  // AI
   minRelevanceScore: '70',
   proposalPrompt: '',
 }
 
+const str = (v, fallback = '') => (v != null ? String(v) : fallback)
+
+function fromProfile(profile) {
+  return {
+    name: profile.name || '',
+    searchKeywords: profile.searchKeywords || '',
+    fixedBidStrategy: profile.fixedBidStrategy || 'ai',
+    bidPercentage: str(profile.bidPercentage),
+    fixedPeriodStrategy: profile.fixedPeriodStrategy || 'ai',
+    hourlyRateStrategy: profile.hourlyRateStrategy || 'my_rate',
+    hourlyPeriodStrategy: profile.hourlyPeriodStrategy || 'ai',
+    minRelevanceScore: str(profile.minRelevanceScore, '70'),
+    proposalPrompt: profile.proposalPrompt || '',
+  }
+}
+
+// Delivery period block shared by both project kinds. `kind` is the form
+// field prefix ("fixed" | "hourly"). Min/max/fallback days for AI estimates
+// are account-wide (Settings → Auto-Bidding).
+function PeriodFields({ kind, form, setForm, aiDescription, formulaNote, fallbackDays }) {
+  const strategyKey = `${kind}PeriodStrategy`
+  const isAi = form[strategyKey] === 'ai'
+  const settingsLink = (
+    <Link to="/settings?section=autobidding" className="font-medium text-navy-700 dark:text-emerald-400 hover:underline">Settings → Auto-Bidding</Link>
+  )
+
+  return (
+    <>
+      <div>
+        <label className={labelClass}>Delivery Period</label>
+        <SegmentedControl
+          label={`${kind === 'fixed' ? 'Fixed-price' : 'Hourly'} delivery period`}
+          value={form[strategyKey]}
+          onChange={v => setForm(prev => ({ ...prev, [strategyKey]: v }))}
+          options={[
+            { value: 'ai', label: 'AI-suggested', description: aiDescription },
+            { value: 'fixed', label: 'Fixed days', description: `Always promise your fallback days (${fallbackDays} days)` },
+          ]}
+        />
+      </div>
+      <p className="text-xs text-slate-500 dark:text-slate-400">
+        {isAi
+          ? <>{formulaNote ? `${formulaNote} ` : ''}Min, max and fallback days apply to every profile and are set under {settingsLink}.</>
+          : <>The fallback days ({fallbackDays}) apply to every profile and are set under {settingsLink}.</>}
+      </p>
+    </>
+  )
+}
+
 export default function ProfileForm({ profile = null, onSave, onCancel, saving = false, error: externalError = null }) {
+  const { user } = useAuth()
   const [form, setForm] = useState(INITIAL_STATE)
   const [error, setError] = useState(null)
   const isEdit = !!profile
+  const accountRate = user?.hourlyRate > 0 ? user.hourlyRate : null
+  const fallbackDays = user?.periodFallbackDays > 0 ? user.periodFallbackDays : 7
+  const aiBidPct = user?.aiBidPercentage > 0 ? user.aiBidPercentage : 100
 
   useEffect(() => {
-    if (profile) {
-      setForm({
-        name: profile.name || '',
-        searchKeywords: profile.searchKeywords || '',
-        projectTypes: profile.projectTypes || 'both',
-        bidAmountStrategy: profile.bidAmountStrategy || 'auto',
-        fixedBidAmount: profile.fixedBidAmount != null ? String(profile.fixedBidAmount) : '',
-        fixedHourlyRate: profile.fixedHourlyRate != null ? String(profile.fixedHourlyRate) : '',
-        bidPercentage: profile.bidPercentage != null ? String(profile.bidPercentage) : '',
-        periodDaysStrategy: profile.periodDaysStrategy || 'fixed',
-        defaultPeriodDays: String(profile.defaultPeriodDays ?? 7),
-        defaultHourlyRate: profile.defaultHourlyRate != null ? String(profile.defaultHourlyRate) : '',
-        minPeriodDays: profile.minPeriodDays != null ? String(profile.minPeriodDays) : '',
-        maxPeriodDays: profile.maxPeriodDays != null ? String(profile.maxPeriodDays) : '',
-        milestonePercentage: String(profile.milestonePercentage ?? 100),
-        minRelevanceScore: String(profile.minRelevanceScore ?? 70),
-        proposalPrompt: profile.proposalPrompt || '',
-      })
-    } else {
-      setForm(INITIAL_STATE)
-    }
+    setForm(profile ? fromProfile(profile) : INITIAL_STATE)
     setError(null)
   }, [profile?.id])
 
@@ -68,8 +104,7 @@ export default function ProfileForm({ profile = null, onSave, onCancel, saving =
     setError(null)
 
     if (!form.name.trim()) return fail('Profile name is required.')
-    if (form.bidAmountStrategy === 'fixed' && !form.fixedBidAmount) return fail('Fixed bid amount is required.')
-    if (form.bidAmountStrategy === 'percentage' && !form.bidPercentage) return fail('Bid percentage is required.')
+    if (form.fixedBidStrategy === 'percentage' && !(Number(form.bidPercentage) > 0 && Number(form.bidPercentage) <= 100)) return fail('Fixed-price projects: bid percentage must be between 1 and 100.')
 
     try {
       await onSave(form)
@@ -79,6 +114,7 @@ export default function ProfileForm({ profile = null, onSave, onCancel, saving =
   }
 
   const displayError = error || externalError
+  const rateLabel = accountRate ? `$${accountRate}/hr` : 'not set yet'
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
@@ -94,7 +130,7 @@ export default function ProfileForm({ profile = null, onSave, onCancel, saving =
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-3">
           Client countries, regions, currencies, languages, and budget ranges are filtered for every profile under{' '}
           <Link to="/job-filters" className="font-medium text-navy-700 dark:text-emerald-400 hover:underline">Job Filters</Link>.
-          Review mode and your freelancer profile for the AI live in{' '}
+          Your hourly rate, delivery period bounds, review mode and your freelancer profile for the AI live in{' '}
           <Link to="/settings?section=autobidding" className="font-medium text-navy-700 dark:text-emerald-400 hover:underline">Settings</Link>.
         </p>
       </div>
@@ -102,120 +138,83 @@ export default function ProfileForm({ profile = null, onSave, onCancel, saving =
       {/* Search Criteria */}
       <div className={card}>
         <p className={`${sectionLabel} mb-4`}>Search Criteria</p>
-        <div className="space-y-4">
-          <div>
-            <label className={labelClass}>Keywords (comma-separated)</label>
-            <input type="text" value={form.searchKeywords} onChange={set('searchKeywords')} className={inputClass} placeholder="react, node, shopify" />
-          </div>
-          <div>
-            <label className={labelClass}>Project Type</label>
-            <SegmentedControl
-              label="Project type"
-              value={form.projectTypes}
-              onChange={v => setForm(prev => ({ ...prev, projectTypes: v }))}
-              options={[
-                { value: 'both', label: 'All', description: 'Search fixed-price and hourly projects' },
-                { value: 'fixed', label: 'Fixed price', description: 'Only projects with a fixed budget' },
-                { value: 'hourly', label: 'Hourly', description: 'Only projects paid by the hour' },
-              ]}
-            />
-          </div>
+        <div>
+          <label className={labelClass}>Keywords (comma-separated)</label>
+          <input type="text" value={form.searchKeywords} onChange={set('searchKeywords')} className={inputClass} placeholder="react, node, shopify" />
+          <p className={hint}>Fixed-price and hourly projects are both searched. How each kind is priced is set below.</p>
         </div>
       </div>
 
-      {/* Bidding Parameters */}
+      {/* Fixed-price projects */}
       <div className={card}>
-        <p className={`${sectionLabel} mb-4`}>Bidding Parameters</p>
+        <p className={`${sectionLabel} mb-1`}>Fixed-Price Projects</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Projects with a total budget. The bid is always kept inside the client's budget range.</p>
         <div className="space-y-4">
           <div>
-            <label className={labelClass}>Bid Amount Strategy</label>
+            <label className={labelClass}>Bid Amount</label>
             <SegmentedControl
-              label="Bid amount strategy"
-              value={form.bidAmountStrategy}
-              onChange={v => setForm(prev => ({ ...prev, bidAmountStrategy: v }))}
+              label="Fixed-price bid amount"
+              value={form.fixedBidStrategy}
+              onChange={v => setForm(prev => ({ ...prev, fixedBidStrategy: v }))}
               options={[
-                { value: 'auto', label: 'AI auto', description: 'The AI picks a competitive amount within the project’s budget' },
-                { value: 'fixed', label: 'Fixed amount', description: 'Always bid the same amount, converted to the project’s currency' },
-                { value: 'percentage', label: '% of budget', description: 'Bid a set percentage of the project’s maximum budget' },
+                { value: 'ai', label: 'AI-suggested', description: `Estimated from the work involved and your hourly rate${aiBidPct !== 100 ? `, scaled to ${aiBidPct}% (Settings → Auto-Bidding)` : ''}, within the budget` },
+                {
+                  value: 'percentage',
+                  label: '% of budget',
+                  description: 'A set percentage of the project’s maximum budget',
+                  extra: (
+                    <>
+                      <label className={labelClass} htmlFor="fixed-bid-percentage">Bid Percentage (%)</label>
+                      <input id="fixed-bid-percentage" type="number" value={form.bidPercentage} onChange={set('bidPercentage')} className={inputClass} placeholder="80" min="1" max="100" step="1" />
+                      <p className={hint}>When a client lists no maximum budget, the AI suggestion is used instead.</p>
+                    </>
+                  ),
+                },
               ]}
             />
           </div>
-          {form.bidAmountStrategy === 'fixed' && (
-            <div>
-              <label className={labelClass}>Fixed Bid Amount (USD)</label>
-              <input type="number" value={form.fixedBidAmount} onChange={set('fixedBidAmount')} className={inputClass} placeholder="50" min="1" step="0.01" />
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Automatically converted to the project's currency (EUR, GBP, …) at the current exchange rate when bidding.</p>
-            </div>
-          )}
-          {form.bidAmountStrategy === 'percentage' && (
-            <div>
-              <label className={labelClass}>Bid Percentage (%)</label>
-              <input type="number" value={form.bidPercentage} onChange={set('bidPercentage')} className={inputClass} placeholder="80" min="1" max="100" />
-            </div>
-          )}
-          {(form.projectTypes === 'hourly' || form.projectTypes === 'both') && (
-            <div>
-              <label className={labelClass}>Fixed Hourly Rate (USD/hr)</label>
-              <input type="number" value={form.fixedHourlyRate} onChange={set('fixedHourlyRate')} className={inputClass} placeholder="e.g. 60" min="1" step="0.5" />
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Always bid this rate regardless of the project's listed range — converted to the project's currency automatically (so $60 becomes ~€55 on a EUR project, not €60). Leave blank to use the bid amount strategy above.</p>
-            </div>
-          )}
+          <PeriodFields
+            kind="fixed"
+            form={form}
+            setForm={setForm}
+            fallbackDays={fallbackDays}
+            aiDescription="Estimated from the budget and your hourly rate, blended with the AI’s estimate"
+            formulaNote={`Days = budget ÷ (8 × your hourly rate, ${rateLabel}) at 90% weight + the AI's estimate at 10%.`}
+          />
+        </div>
+      </div>
+
+      {/* Hourly projects */}
+      <div className={card}>
+        <p className={`${sectionLabel} mb-1`}>Hourly Projects</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Projects paid by the hour. The bid is a rate per hour.</p>
+        <div className="space-y-4">
           <div>
-            <label className={labelClass}>Delivery Period Strategy</label>
+            <label className={labelClass}>Hourly Rate</label>
             <SegmentedControl
-              label="Delivery period strategy"
-              value={form.periodDaysStrategy}
-              onChange={v => setForm(prev => ({ ...prev, periodDaysStrategy: v }))}
+              label="Hourly rate"
+              value={form.hourlyRateStrategy}
+              onChange={v => setForm(prev => ({ ...prev, hourlyRateStrategy: v }))}
               options={[
-                { value: 'fixed', label: 'Fixed', description: 'Always promise the same number of days' },
-                { value: 'ai', label: 'AI-suggested', description: 'Estimate from budget and your rate, blended with the AI’s estimate' },
+                { value: 'my_rate', label: 'My rate', description: `Bid your account-wide rate (${rateLabel}) as-is, converted to the project’s currency` },
+                { value: 'ai', label: 'AI-suggested', description: 'The AI picks a rate inside the client’s listed range, as close to yours as it allows' },
               ]}
             />
-          </div>
-          {form.periodDaysStrategy === 'fixed' ? (
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={labelClass}>Delivery Period (days)</label>
-                <input type="number" value={form.defaultPeriodDays} onChange={set('defaultPeriodDays')} className={inputClass} min="1" />
-              </div>
-              <div>
-                <label className={labelClass}>Milestone %</label>
-                <input type="number" value={form.milestonePercentage} onChange={set('milestonePercentage')} className={inputClass} min="0" max="100" />
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Period = <span className="font-medium">budget ÷ (8 × rate)</span> at 90% weight + AI estimate at 10%, then clamped to your bounds.
+            {!accountRate && form.hourlyRateStrategy === 'my_rate' && (
+              <p className={`${hint} text-amber-600 dark:text-amber-400`}>
+                No hourly rate is set yet, so the AI suggestion will be used. Set it under{' '}
+                <Link to="/settings?section=autobidding" className="font-medium underline">Settings → Auto-Bidding</Link>.
               </p>
-              <div>
-                <label className={labelClass}>Your Hourly Rate (USD/hr)</label>
-                <input type="number" value={form.defaultHourlyRate} onChange={set('defaultHourlyRate')} className={inputClass} min="1" step="0.5" placeholder="e.g. 50" />
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Used in budget ÷ (8 × rate) to estimate days, and as your hourly bid on hourly projects — converted to the project's currency automatically.</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className={labelClass}>Min Days</label>
-                  <input type="number" value={form.minPeriodDays} onChange={set('minPeriodDays')} className={inputClass} min="1" placeholder="e.g. 1" />
-                </div>
-                <div>
-                  <label className={labelClass}>Max Days</label>
-                  <input type="number" value={form.maxPeriodDays} onChange={set('maxPeriodDays')} className={inputClass} min="1" placeholder="e.g. 14" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className={labelClass}>Fallback (days)</label>
-                  <input type="number" value={form.defaultPeriodDays} onChange={set('defaultPeriodDays')} className={inputClass} min="1" />
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">When neither formula nor AI can estimate</p>
-                </div>
-                <div>
-                  <label className={labelClass}>Milestone %</label>
-                  <input type="number" value={form.milestonePercentage} onChange={set('milestonePercentage')} className={inputClass} min="0" max="100" />
-                </div>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
+          <PeriodFields
+            kind="hourly"
+            form={form}
+            setForm={setForm}
+            fallbackDays={fallbackDays}
+            aiDescription="The AI’s estimate of the first engagement"
+            formulaNote={null}
+          />
         </div>
       </div>
 
@@ -230,7 +229,7 @@ export default function ProfileForm({ profile = null, onSave, onCancel, saving =
           <div>
             <label className={labelClass}>Extra Proposal Instructions</label>
             <textarea value={form.proposalPrompt} onChange={set('proposalPrompt')} rows={5} className={inputClass} placeholder="e.g. Mention my Shopify Plus experience and always offer a free 15-minute call." />
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Appended to the account-wide proposal prompt (Settings → Auto-Bidding) for bids from this profile. Leave blank to use the shared prompt as is.</p>
+            <p className={hint}>Appended to the account-wide proposal prompt (Settings → Auto-Bidding) for bids from this profile. Leave blank to use the shared prompt as is.</p>
           </div>
         </div>
       </div>

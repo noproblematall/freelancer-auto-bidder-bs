@@ -142,7 +142,7 @@ function mergeJobFilters(profile, filters) {
 }
 
 // Build the effective profile the engine and the AI routes work with: the
-// profile row plus the account's job filters, review mode and AI context.
+// profile row plus the account's job filters, review mode, hourly rate and AI context.
 // When `profile` is null (an ad-hoc analysis with no profile picked) a bare
 // profile-shaped object carrying the account context is returned instead.
 async function applyAccountSettings(profile, userId) {
@@ -150,7 +150,7 @@ async function applyAccountSettings(profile, userId) {
   const user = id
     ? await prisma.user.findUnique({
         where: { id },
-        select: { jobFilters: true, reviewMode: true, proposalPrompt: true, skillsSummary: true, experienceSummary: true, portfolioHighlights: true },
+        select: { jobFilters: true, reviewMode: true, proposalPrompt: true, hourlyRate: true, periodMinDays: true, periodMaxDays: true, periodFallbackDays: true, aiBidPercentage: true, skillsSummary: true, experienceSummary: true, portfolioHighlights: true },
       })
     : null;
 
@@ -158,6 +158,18 @@ async function applyAccountSettings(profile, userId) {
 
   // Review mode is account-wide: the per-profile column is ignored entirely.
   base.reviewMode = user?.reviewMode === true;
+
+  // The freelancer's hourly rate (USD/hr) is account-wide; see services/bidding/pricing.js.
+  base.hourlyRate = typeof user?.hourlyRate === 'number' && user.hourlyRate > 0 ? user.hourlyRate : null;
+
+  // Delivery period bounds for AI-estimated periods are account-wide too.
+  const days = (v) => (Number.isInteger(v) && v > 0 ? v : null);
+  base.periodMinDays = days(user?.periodMinDays);
+  base.periodMaxDays = days(user?.periodMaxDays);
+  base.periodFallbackDays = days(user?.periodFallbackDays) || 7;
+
+  // Share of the AI-suggested amount to bid on fixed-price projects (account-wide).
+  base.aiBidPercentage = days(user?.aiBidPercentage) || 100;
 
   // Account-wide proposal prompt; the profile's own proposalPrompt is appended
   // to it by promptLoader.getProposalPrompt.

@@ -2,7 +2,7 @@ const express = require('express');
 const prisma = require('../config/database');
 const authMiddleware = require('../middleware/auth');
 const flClient = require('../middleware/freelancerClient');
-const { placeBid, retractBid } = require('../services/freelancer/bids');
+const { placeBid, retractBid, MILESTONE_PERCENTAGE } = require('../services/freelancer/bids');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -217,7 +217,7 @@ router.get('/:id', async (req, res, next) => {
 // POST /api/bids — Manual bid placement
 router.post('/', flClient, async (req, res, next) => {
   try {
-    const { projectId, amount, periodDays, milestonePercentage = 100, proposalText } = req.body;
+    const { projectId, amount, periodDays, proposalText } = req.body;
 
     if (!projectId || !amount || !periodDays || !proposalText) {
       return res.status(400).json({ error: 'Missing required fields: projectId, amount, periodDays, proposalText' });
@@ -230,12 +230,8 @@ router.post('/', flClient, async (req, res, next) => {
     }
     const amountNum = parseFloat(amount);
     const periodNum = parseInt(periodDays);
-    const milestoneNum = parseInt(milestonePercentage);
     if (isNaN(amountNum) || amountNum <= 0) return res.status(400).json({ error: 'Invalid amount' });
     if (isNaN(periodNum) || periodNum < 1) return res.status(400).json({ error: 'Invalid delivery period (days)' });
-    if (isNaN(milestoneNum) || milestoneNum < 0 || milestoneNum > 100) {
-      return res.status(400).json({ error: 'Milestone percentage must be between 0 and 100' });
-    }
 
     // Look up the project
     const project = await prisma.project.findUnique({ where: { id: parseInt(projectId) } });
@@ -267,7 +263,7 @@ router.post('/', flClient, async (req, res, next) => {
         projectId: project.id,
         amount: amountNum,
         periodDays: periodNum,
-        milestonePercentage: milestoneNum,
+        milestonePercentage: MILESTONE_PERCENTAGE,
         proposalText,
         status: 'pending',
       },
@@ -280,7 +276,6 @@ router.post('/', flClient, async (req, res, next) => {
         bidderId: parseInt(token.freelancerUid),
         amount: amountNum,
         period: periodNum,
-        milestonePercentage: milestoneNum,
         description: proposalText,
         sealed: !!userRow?.sealBids,
       });

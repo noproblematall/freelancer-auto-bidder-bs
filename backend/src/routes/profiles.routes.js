@@ -124,15 +124,43 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+// Per-kind bidding parameters. Checks the values that will end up stored: the
+// request value, else the existing row (updates), else the column default.
+// Returns an error message, or null when everything is consistent.
+const { FIXED_BID_STRATEGIES, HOURLY_RATE_STRATEGIES, PERIOD_STRATEGIES } = require('../services/bidding/pricing');
+function validateBiddingParams(body, existing = {}) {
+  const pick = (key, fallback) => (body[key] !== undefined ? body[key] : (existing[key] !== undefined ? existing[key] : fallback));
+  const num = (v) => (v === undefined || v === null || v === '' ? null : Number(v));
+
+  const fixedBidStrategy = pick('fixedBidStrategy', 'ai');
+  if (!FIXED_BID_STRATEGIES.includes(fixedBidStrategy)) return 'Invalid fixed-price bid strategy';
+  if (fixedBidStrategy === 'percentage') {
+    const pct = num(pick('bidPercentage', null));
+    if (!(pct > 0 && pct <= 100)) return 'Bid percentage must be between 1 and 100';
+  }
+
+  const hourlyRateStrategy = pick('hourlyRateStrategy', 'my_rate');
+  if (!HOURLY_RATE_STRATEGIES.includes(hourlyRateStrategy)) return 'Invalid hourly rate strategy';
+
+  for (const [kind, label] of [['fixed', 'Fixed-price'], ['hourly', 'Hourly']]) {
+    const strategy = pick(`${kind}PeriodStrategy`, 'ai');
+    if (!PERIOD_STRATEGIES.includes(strategy)) return `Invalid ${label.toLowerCase()} delivery period strategy`;
+  }
+
+  return null;
+}
+
 // POST /api/profiles — Create new profile
 router.post('/', async (req, res, next) => {
   try {
     const {
-      name, searchKeywords, jobIds, budgetMinFixed, budgetMaxFixed, budgetMinHourly, budgetMaxHourly, projectTypes,
+      name, searchKeywords, jobIds, budgetMinFixed, budgetMaxFixed, budgetMinHourly, budgetMaxHourly,
       countries, excludedCountries, excludedRegions, countryExceptions, excludedCurrencies, languages,
-      bidAmountStrategy, fixedBidAmount, fixedHourlyRate, bidPercentage,
-      periodDaysStrategy, defaultPeriodDays, defaultHourlyRate, minPeriodDays, maxPeriodDays,
-      milestonePercentage, minRelevanceScore, proposalPrompt, reviewMode,
+      fixedBidStrategy, bidPercentage,
+      fixedPeriodStrategy,
+      hourlyRateStrategy,
+      hourlyPeriodStrategy,
+      minRelevanceScore, proposalPrompt, reviewMode,
       maxBidsPerHour, maxBidsPerDay, skillsSummary, experienceSummary, portfolioHighlights,
     } = req.body;
 
@@ -140,20 +168,8 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: 'Profile name is required' });
     }
 
-    if (bidAmountStrategy === 'fixed' && !fixedBidAmount) {
-      return res.status(400).json({ error: 'Fixed bid amount is required when using fixed strategy' });
-    }
-    if (bidAmountStrategy === 'percentage' && !bidPercentage) {
-      return res.status(400).json({ error: 'Bid percentage is required when using percentage strategy' });
-    }
-
-    // Validate milestone percentage
-    if (milestonePercentage !== undefined && milestonePercentage !== null && milestonePercentage !== '') {
-      const milestone = parseInt(milestonePercentage);
-      if (isNaN(milestone) || milestone < 0 || milestone > 100) {
-        return res.status(400).json({ error: 'Milestone percentage must be between 0 and 100' });
-      }
-    }
+    const biddingError = validateBiddingParams(req.body);
+    if (biddingError) return res.status(400).json({ error: biddingError });
 
     // Validate budget ranges
     if (budgetMinFixed && budgetMaxFixed && parseFloat(budgetMinFixed) > parseFloat(budgetMaxFixed)) {
@@ -173,7 +189,6 @@ router.post('/', async (req, res, next) => {
         budgetMaxFixed: budgetMaxFixed ? parseFloat(budgetMaxFixed) : null,
         budgetMinHourly: budgetMinHourly ? parseFloat(budgetMinHourly) : null,
         budgetMaxHourly: budgetMaxHourly ? parseFloat(budgetMaxHourly) : null,
-        projectTypes: projectTypes || 'both',
         countries: serializeArray(countries),
         excludedCountries: serializeArray(excludedCountries),
         excludedRegions: serializeRegions(excludedRegions),
@@ -184,18 +199,13 @@ router.post('/', async (req, res, next) => {
             : excludedCurrencies
         ),
         languages: languages || null,
-        bidAmountStrategy: bidAmountStrategy || 'auto',
-        fixedBidAmount: fixedBidAmount ? parseFloat(fixedBidAmount) : null,
-        fixedHourlyRate: fixedHourlyRate ? parseFloat(fixedHourlyRate) : null,
+        // Fixed-price projects
+        fixedBidStrategy: fixedBidStrategy || 'ai',
         bidPercentage: bidPercentage ? parseFloat(bidPercentage) : null,
-        periodDaysStrategy: periodDaysStrategy || 'fixed',
-        defaultPeriodDays: defaultPeriodDays ? parseInt(defaultPeriodDays) : 7,
-        defaultHourlyRate: defaultHourlyRate ? parseFloat(defaultHourlyRate) : null,
-        minPeriodDays: minPeriodDays ? parseInt(minPeriodDays) : null,
-        maxPeriodDays: maxPeriodDays ? parseInt(maxPeriodDays) : null,
-        milestonePercentage: (milestonePercentage !== undefined && milestonePercentage !== null && milestonePercentage !== '')
-          ? parseInt(milestonePercentage)
-          : 100,
+        fixedPeriodStrategy: fixedPeriodStrategy || 'ai',
+        // Hourly projects
+        hourlyRateStrategy: hourlyRateStrategy || 'my_rate',
+        hourlyPeriodStrategy: hourlyPeriodStrategy || 'ai',
         minRelevanceScore: minRelevanceScore ? parseInt(minRelevanceScore) : 70,
         proposalPrompt: proposalPrompt || null,
         reviewMode: reviewMode === true,
@@ -246,28 +256,18 @@ router.put('/:id', async (req, res, next) => {
     if (!existing) return res.status(404).json({ error: 'Profile not found' });
 
     const {
-      name, searchKeywords, jobIds, budgetMinFixed, budgetMaxFixed, budgetMinHourly, budgetMaxHourly, projectTypes,
+      name, searchKeywords, jobIds, budgetMinFixed, budgetMaxFixed, budgetMinHourly, budgetMaxHourly,
       countries, excludedCountries, excludedRegions, countryExceptions, excludedCurrencies, languages,
-      bidAmountStrategy, fixedBidAmount, fixedHourlyRate, bidPercentage,
-      periodDaysStrategy, defaultPeriodDays, defaultHourlyRate, minPeriodDays, maxPeriodDays,
-      milestonePercentage, minRelevanceScore, proposalPrompt, reviewMode,
+      fixedBidStrategy, bidPercentage,
+      fixedPeriodStrategy,
+      hourlyRateStrategy,
+      hourlyPeriodStrategy,
+      minRelevanceScore, proposalPrompt, reviewMode,
       maxBidsPerHour, maxBidsPerDay, skillsSummary, experienceSummary, portfolioHighlights,
     } = req.body;
 
-    if (bidAmountStrategy === 'fixed' && !fixedBidAmount && !existing.fixedBidAmount) {
-      return res.status(400).json({ error: 'Fixed bid amount is required when using fixed strategy' });
-    }
-    if (bidAmountStrategy === 'percentage' && !bidPercentage && !existing.bidPercentage) {
-      return res.status(400).json({ error: 'Bid percentage is required when using percentage strategy' });
-    }
-
-    // Validate milestone percentage
-    if (milestonePercentage !== undefined && milestonePercentage !== null && milestonePercentage !== '') {
-      const milestone = parseInt(milestonePercentage);
-      if (isNaN(milestone) || milestone < 0 || milestone > 100) {
-        return res.status(400).json({ error: 'Milestone percentage must be between 0 and 100' });
-      }
-    }
+    const biddingError = validateBiddingParams(req.body, existing);
+    if (biddingError) return res.status(400).json({ error: biddingError });
 
     // Validate budget ranges (check final values after merge)
     const finalMinFixed = budgetMinFixed !== undefined ? (budgetMinFixed ? parseFloat(budgetMinFixed) : null) : existing.budgetMinFixed;
@@ -290,7 +290,6 @@ router.put('/:id', async (req, res, next) => {
     if (budgetMaxFixed !== undefined) data.budgetMaxFixed = budgetMaxFixed ? parseFloat(budgetMaxFixed) : null;
     if (budgetMinHourly !== undefined) data.budgetMinHourly = budgetMinHourly ? parseFloat(budgetMinHourly) : null;
     if (budgetMaxHourly !== undefined) data.budgetMaxHourly = budgetMaxHourly ? parseFloat(budgetMaxHourly) : null;
-    if (projectTypes !== undefined) data.projectTypes = projectTypes;
     if (countries !== undefined) data.countries = serializeArray(countries);
     if (excludedCountries !== undefined) data.excludedCountries = serializeArray(excludedCountries);
     if (excludedRegions !== undefined) data.excludedRegions = serializeRegions(excludedRegions);
@@ -303,20 +302,13 @@ router.put('/:id', async (req, res, next) => {
       );
     }
     if (languages !== undefined) data.languages = languages || null;
-    if (bidAmountStrategy !== undefined) data.bidAmountStrategy = bidAmountStrategy;
-    if (fixedBidAmount !== undefined) data.fixedBidAmount = fixedBidAmount ? parseFloat(fixedBidAmount) : null;
-    if (fixedHourlyRate !== undefined) data.fixedHourlyRate = fixedHourlyRate ? parseFloat(fixedHourlyRate) : null;
+    // Fixed-price projects
+    if (fixedBidStrategy !== undefined) data.fixedBidStrategy = fixedBidStrategy;
     if (bidPercentage !== undefined) data.bidPercentage = bidPercentage ? parseFloat(bidPercentage) : null;
-    if (periodDaysStrategy !== undefined) data.periodDaysStrategy = periodDaysStrategy;
-    if (defaultPeriodDays !== undefined) data.defaultPeriodDays = parseInt(defaultPeriodDays);
-    if (defaultHourlyRate !== undefined) data.defaultHourlyRate = defaultHourlyRate ? parseFloat(defaultHourlyRate) : null;
-    if (minPeriodDays !== undefined) data.minPeriodDays = minPeriodDays ? parseInt(minPeriodDays) : null;
-    if (maxPeriodDays !== undefined) data.maxPeriodDays = maxPeriodDays ? parseInt(maxPeriodDays) : null;
-    if (milestonePercentage !== undefined) {
-      data.milestonePercentage = (milestonePercentage !== null && milestonePercentage !== '')
-        ? parseInt(milestonePercentage)
-        : 100;
-    }
+    if (fixedPeriodStrategy !== undefined) data.fixedPeriodStrategy = fixedPeriodStrategy;
+    // Hourly projects
+    if (hourlyRateStrategy !== undefined) data.hourlyRateStrategy = hourlyRateStrategy;
+    if (hourlyPeriodStrategy !== undefined) data.hourlyPeriodStrategy = hourlyPeriodStrategy;
     if (minRelevanceScore !== undefined) data.minRelevanceScore = parseInt(minRelevanceScore);
     if (proposalPrompt !== undefined) data.proposalPrompt = proposalPrompt || null;
     if (reviewMode !== undefined) data.reviewMode = reviewMode === true;

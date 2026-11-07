@@ -122,6 +122,21 @@ async function seedJobFilterDefaults(prisma) {
   return result.count;
 }
 
+// Hourly rate (users.hourly_rate), USD per hour, shared by every bid profile:
+// bid as-is on hourly projects and used to turn a fixed budget into a
+// delivery estimate (budget ÷ (8h × rate)). The owner sets their real rate
+// under Settings → Auto-Bidding.
+const DEFAULT_HOURLY_RATE = 25;
+
+// Idempotent: only accounts without a rate are touched.
+async function seedHourlyRateDefault(prisma) {
+  const result = await prisma.user.updateMany({
+    where: { hourlyRate: null },
+    data: { hourlyRate: DEFAULT_HOURLY_RATE },
+  });
+  return result.count;
+}
+
 async function main() {
   const prisma = require('../src/config/database');
   try {
@@ -131,6 +146,8 @@ async function main() {
     console.log(`Seed: schedule defaults applied to ${scheduled} account(s)`);
     const profiled = await seedFreelancerProfileDefaults(prisma);
     console.log(`Seed: freelancer profile defaults applied to ${profiled} account(s)`);
+    const rated = await seedHourlyRateDefault(prisma);
+    console.log(`Seed: hourly rate default applied to ${rated} account(s)`);
   } finally {
     await prisma.$disconnect();
   }
@@ -147,4 +164,5 @@ module.exports = {
   DEFAULT_JOB_FILTERS, defaultJobFiltersJson, seedJobFilterDefaults,
   DEFAULT_SCHEDULE_WEEK, defaultScheduleWeekJson, seedScheduleDefaults,
   DEFAULT_FREELANCER_PROFILE, defaultFreelancerProfile, seedFreelancerProfileDefaults,
+  DEFAULT_HOURLY_RATE, seedHourlyRateDefault,
 };

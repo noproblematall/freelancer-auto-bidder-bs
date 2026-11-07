@@ -6,6 +6,9 @@
  */
 export default function SegmentedControl({ value, options, onChange, label, className = '' }) {
   function onKeyDown(e) {
+    // Arrow keys only move between options when focus is on an option itself,
+    // not on a field rendered inside a selected option (e.g. a number input).
+    if (e.target.getAttribute('role') !== 'radio') return
     const idx = options.findIndex(o => o.value === value)
     if (idx < 0) return
     let next = null
@@ -27,19 +30,23 @@ export default function SegmentedControl({ value, options, onChange, label, clas
     >
       {options.map((option) => {
         const active = option.value === value
+        const showExtra = active && option.extra
         return (
-          <button
+          <div
             key={option.value}
+            className={`rounded-lg border transition-colors duration-150 ${
+              active
+                ? 'border-navy-800 dark:border-emerald-400 bg-navy-50 dark:bg-emerald-400/10'
+                : 'border-slate-200 dark:border-white/10 bg-white dark:bg-navy-900 hover:border-slate-300 dark:hover:border-white/20'
+            }`}
+          >
+          <button
             type="button"
             role="radio"
             aria-checked={active}
             tabIndex={active ? 0 : -1}
             onClick={() => onChange(option.value)}
-            className={`text-left rounded-lg border px-3.5 py-3 transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-500/30 ${
-              active
-                ? 'border-navy-800 dark:border-emerald-400 bg-navy-50 dark:bg-emerald-400/10'
-                : 'border-slate-200 dark:border-white/10 bg-white dark:bg-navy-900 hover:border-slate-300 dark:hover:border-white/20'
-            }`}
+            className={`w-full text-left rounded-lg px-3.5 py-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-500/30 ${showExtra ? 'pb-2' : ''}`}
           >
             <span className="flex items-start justify-between gap-2">
               <span className={`text-sm font-semibold ${active ? 'text-navy-950 dark:text-white' : 'text-slate-700 dark:text-slate-200'}`}>
@@ -64,6 +71,12 @@ export default function SegmentedControl({ value, options, onChange, label, clas
               </span>
             )}
           </button>
+          {showExtra && (
+            <div className="px-3.5 pb-3">
+              {option.extra}
+            </div>
+          )}
+          </div>
         )
       })}
     </div>

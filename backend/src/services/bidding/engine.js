@@ -3,13 +3,13 @@ const { decrypt, encrypt, willExpireSoon } = require('../../utils/tokenManager')
 const { createFreelancerClient } = require('../freelancer/client');
 const { refreshAccessToken } = require('../freelancer/auth');
 const { searchProjects } = require('../freelancer/projects');
-const { placeBid, sealBid, getBidById } = require('../freelancer/bids');
+const { placeBid, sealBid, getBidById, MILESTONE_PERCENTAGE } = require('../freelancer/bids');
 const { notifyBidPlaced, notifyBidError } = require('../notifications/telegram');
 const { createOpenAIClient } = require('../openai/client');
-const { convertFromUSD, roundHourlyRate } = require('../currency');
 const { analyzeProject } = require('../openai/analyzer');
 const { generateProposal } = require('../openai/proposalGenerator');
 const { applyAccountSettings } = require('./jobFilters');
+const { priceBid } = require('./pricing');
 const logger = require('../../utils/logger');
 
 /**
@@ -221,9 +221,6 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
     const allMaxs = [profile.budgetMaxFixed, profile.budgetMaxHourly].filter(x => x != null);
     if (allMins.length > 0) filters.minBudget = Math.min(...allMins);
     if (allMaxs.length > 0) filters.maxBudget = Math.max(...allMaxs);
-  }
-  if (profile.projectTypes && profile.projectTypes !== 'both') {
-    filters.projectTypes = [profile.projectTypes];
   }
   if (profile.countries) {
     try { filters.countries = JSON.parse(profile.countries); } catch (e) { logger.warn(`Profile "${profile.name}": failed to parse countries: ${e.message}`); }
@@ -616,91 +613,16 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
         continue;
       }
 
-      // Step 8: Price
-      let bidAmount;
-      let skipBudgetClamp = false;
-      const isHourly = project.projectType === 'hourly';
-
-      // Profile amounts are entered in USD; projects bid in their own currency.
-      // Convert so "$50/hr" doesn't silently become £50/hr on a GBP project.
-      // (Percentage strategy and AI suggestions are already in project currency.)
-      const projectCurrency = project.currency || 'USD';
-
-      // Fixed hourly rate override — always wins for hourly projects
-      if (isHourly && profile.fixedHourlyRate > 0) {
-        const conv = await convertFromUSD(profile.fixedHourlyRate, projectCurrency);
-        // Snap converted hourly rates to the nearest 5 so we don't bid
-        // awkward numbers like 71.02 CAD/hr.
-        bidAmount = conv.converted ? roundHourlyRate(conv.amount) : conv.amount;
-        skipBudgetClamp = true;
-        logger.info(`Project #${project.id}: using fixed hourly rate $${profile.fixedHourlyRate} USD → ${bidAmount} ${projectCurrency}/hr${conv.converted ? ` (rate ${conv.rate}, rounded from ${conv.amount})` : ''} (ignoring project range ${project.budgetMin}-${project.budgetMax})`);
-      } else if (profile.bidAmountStrategy === 'fixed') {
-        if (profile.fixedBidAmount == null) {
-          logger.warn(`Profile "${profile.name}": bidAmountStrategy='fixed' but fixedBidAmount is null — skipping project #${project.id}`);
-          results.errors++;
-          continue;
-        }
-        const conv = await convertFromUSD(profile.fixedBidAmount, projectCurrency);
-        bidAmount = conv.amount;
-        if (conv.converted) logger.info(`Project #${project.id}: fixed bid $${profile.fixedBidAmount} USD → ${bidAmount} ${projectCurrency} (rate ${conv.rate})`);
-      } else if (profile.bidAmountStrategy === 'percentage' && project.budgetMax) {
-        bidAmount = Math.round(project.budgetMax * (profile.bidPercentage / 100) * 100) / 100;
-      } else if (isHourly && profile.defaultHourlyRate > 0) {
-        // Hourly project (auto mode): bid at our hourly rate; clamp to client's range below
-        const conv = await convertFromUSD(profile.defaultHourlyRate, projectCurrency);
-        // Snap converted hourly rates to the nearest 5 (the budget clamp below
-        // may still adjust into the client's range).
-        bidAmount = conv.converted ? roundHourlyRate(conv.amount) : conv.amount;
-        if (conv.converted) logger.info(`Project #${project.id}: hourly rate $${profile.defaultHourlyRate} USD → ${bidAmount} ${projectCurrency}/hr (rate ${conv.rate}, rounded from ${conv.amount})`);
-      } else {
-        bidAmount = analysis.suggested_bid_amount || project.budgetMin
-          || (await convertFromUSD(50, projectCurrency)).amount;
-      }
-      // Clamp to client's budget range (skipped when using a fixed hourly rate override)
-      if (!skipBudgetClamp) {
-        if (project.budgetMin && bidAmount < project.budgetMin) bidAmount = project.budgetMin;
-        if (project.budgetMax && bidAmount > project.budgetMax) bidAmount = project.budgetMax;
-      }
-
-      // Step 9: Place
-      // Determine delivery period
-      let periodDays = profile.defaultPeriodDays;
-      if (profile.periodDaysStrategy === 'ai') {
-        const aiDays = analysis.suggested_timeline_days > 0 ? analysis.suggested_timeline_days : 0;
-
-        // Formula: budget / (8 * hourlyRate) — skipped for hourly-rate projects where budget = $/hr not total
-        let formulaDays = 0;
-        const isFixedPrice = !project.projectType || project.projectType === 'fixed';
-        const budget = project.budgetMax || project.budgetMin;
-        if (isFixedPrice && budget > 0 && profile.defaultHourlyRate > 0) {
-          // Budget is in project currency; the hourly rate is USD — convert so
-          // the day estimate isn't skewed on non-USD projects.
-          const localRate = (await convertFromUSD(profile.defaultHourlyRate, projectCurrency)).amount;
-          formulaDays = budget / (8 * localRate);
-        }
-
-        if (formulaDays > 0 && aiDays > 0) {
-          // Formula is primary (90%), AI is secondary (10%)
-          periodDays = Math.round(formulaDays * 0.90 + aiDays * 0.10);
-        } else if (formulaDays > 0) {
-          periodDays = Math.round(formulaDays);
-        } else if (aiDays > 0) {
-          periodDays = aiDays;
-        }
-        // else: keep defaultPeriodDays as fallback
-
-        if (profile.minPeriodDays && periodDays < profile.minPeriodDays) periodDays = profile.minPeriodDays;
-        if (profile.maxPeriodDays && periodDays > profile.maxPeriodDays) periodDays = profile.maxPeriodDays;
-        if (periodDays < 1) periodDays = 1;
-
-        logger.info(`Project #${project.id}: formula=${formulaDays.toFixed(1)}d, AI=${aiDays}d → period=${periodDays}d`);
-      }
-
-      // Validate and sanitize milestone percentage (0-100)
-      let milestonePercentage = profile.milestonePercentage;
-      if (typeof milestonePercentage !== 'number' || isNaN(milestonePercentage) || milestonePercentage < 0 || milestonePercentage > 100) {
-        logger.warn(`Invalid milestonePercentage (${milestonePercentage}) in profile "${profile.name}", using default 100`);
-        milestonePercentage = 100;
+      // Step 8: Price and schedule. Fixed-price and hourly projects each use
+      // their own block of profile settings (see pricing.js); a pricing
+      // failure (e.g. currency conversion) skips the project.
+      let bidAmount, periodDays;
+      try {
+        ({ amount: bidAmount, periodDays } = await priceBid(project, profile, analysis));
+      } catch (priceErr) {
+        logger.warn(`Profile "${profile.name}": ${priceErr.message} — skipping project #${project.id}`);
+        results.errors++;
+        continue;
       }
 
       // Just-in-time duplicate guard: a run can span minutes (bid delays), so
@@ -727,7 +649,7 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
             projectId: project.id,
             amount: bidAmount,
             periodDays,
-            milestonePercentage,
+            milestonePercentage: MILESTONE_PERCENTAGE,
             proposalText,
             status: 'pending_review',
           },
@@ -752,7 +674,7 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
           projectId: project.id,
           amount: bidAmount,
           periodDays,
-          milestonePercentage,
+          milestonePercentage: MILESTONE_PERCENTAGE,
           proposalText,
           status: 'pending',
         },
@@ -801,7 +723,6 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
           bidderId: freelancerUid,
           amount: bidAmount,
           period: periodDays,
-          milestonePercentage,
           description: proposalText,
           sealed: !!user?.sealBids,
         });
