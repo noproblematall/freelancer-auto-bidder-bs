@@ -61,8 +61,9 @@ function defaultScheduleWeekJson() {
 // scores projects and writes bids. A solid full-stack, mobile and AI developer
 // profile by default; the account owner edits it under Settings → Freelancer
 // Profile. Skills and experience describe capabilities in general. Portfolio
-// highlights are the owner's REAL projects and ship empty: the bid prompt only
-// quotes examples from there, so nothing made-up ever reaches a client.
+// highlights are the owner's sample sites grouped by skill. The shipped
+// proposal prompt (ChatGPT-prompt.md) quotes them only when a client asks for
+// examples; a custom account prompt (Settings → Auto-Bidding) may use them more.
 const DEFAULT_FREELANCER_PROFILE = Object.freeze({
   // One "- " bullet per area so the text reads cleanly in the Settings editor and in the prompt
   skillsSummary: [
@@ -86,7 +87,24 @@ const DEFAULT_FREELANCER_PROFILE = Object.freeze({
     "- Maintenance: bug fixing, performance tuning, security hardening, and migrations of legacy sites (for example WordPress to React) to modern stacks while preserving URLs and search rankings. Comfortable taking over someone else's code.",
     "- Way of working: clear written updates, realistic estimates, a short demo at each milestone, and no surprises on scope or cost.",
   ].join('\n'),
-  portfolioHighlights: null,
+  // A heading per skill, one site per line, a blank line between groups
+  portfolioHighlights: [
+    "Shopify (Shopify Partner since 2018, themes and apps)",
+    "- https://www.tombihn.com",
+    "- https://usabaseballshop.com",
+    "- https://www.foriawellness.com",
+    "- https://nanohearingaids.com",
+    "- https://platinumtherapylights.com",
+    "- https://www.hotelcollection.com",
+    "",
+    "PHP and Laravel with React, Vue or Angular",
+    "- https://alchemy.team",
+    "- https://sparktutoring.team",
+    "- https://serwish.ge",
+    "- https://metrix.ge",
+    "- https://hogar.zurich.ar.onmtc.com",
+    "- https://movilidad.zurich.ar.onmtc.com",
+  ].join('\n'),
 });
 
 function defaultFreelancerProfile() {

@@ -26,7 +26,7 @@ PROJECT:
     prompt += `\n\nFREELANCER PROFILE:`;
     if (profile.skillsSummary) prompt += `\n- Skills: ${profile.skillsSummary}`;
     if (profile.experienceSummary) prompt += `\n- Experience: ${profile.experienceSummary}`;
-    if (profile.portfolioHighlights) prompt += `\n- Portfolio: ${profile.portfolioHighlights}`;
+    if (profile.portfolioHighlights) prompt += `\n- Portfolio (sample sites by skill):\n${profile.portfolioHighlights}`;
   }
 
   prompt += `\n\nIMPORTANT: The bid MUST be under ${MAX_CHARS} characters total. Be concise.`;
