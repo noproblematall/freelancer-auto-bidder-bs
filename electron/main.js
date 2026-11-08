@@ -132,52 +132,19 @@ Object.assign(process.env, {
 })
 
 // ─── Migrations (better-sqlite3, no Prisma CLI needed) ───────────────────────
+// Ordering and statement splitting live in ./migrations.js so the upgrade
+// tests can run the exact same code against a scratch database.
 function runMigrations() {
   const Database = require('better-sqlite3')
+  const { applyMigrations } = require('./migrations')
   const db = new Database(dbPath)
 
   db.pragma('journal_mode = WAL')
-  db.exec(`CREATE TABLE IF NOT EXISTS _migrations (
-    name TEXT PRIMARY KEY,
-    ran_at INTEGER NOT NULL
-  )`)
-
-  if (!fs.existsSync(migrationsDir)) {
+  try {
+    applyMigrations(db, migrationsDir)
+  } finally {
     db.close()
-    return
   }
-
-  const folders = fs.readdirSync(migrationsDir)
-    .filter(f => fs.statSync(path.join(migrationsDir, f)).isDirectory())
-    .sort()
-
-  for (const folder of folders) {
-    if (db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(folder)) continue
-
-    const sqlPath = path.join(migrationsDir, folder, 'migration.sql')
-    if (!fs.existsSync(sqlPath)) {
-      db.prepare('INSERT INTO _migrations VALUES (?, ?)').run(folder, Date.now())
-      continue
-    }
-
-    const sql = fs.readFileSync(sqlPath, 'utf8')
-    // Strip single-line comments before splitting on ';' to avoid semicolons inside comments
-    const cleanSql = sql.replace(/--[^\n]*/g, '').trim()
-    if (cleanSql) {
-      // Execute each statement individually (SQLite doesn't support all multi-statement exec)
-      for (const stmt of cleanSql.split(';').map(s => s.trim()).filter(Boolean)) {
-        try { db.exec(stmt) } catch (e) {
-          // Ignore idempotent re-runs: "already exists" (CREATE TABLE/INDEX) and
-          // "duplicate column name" (ALTER TABLE ADD COLUMN re-applied after a
-          // crash between a statement and the _migrations bookkeeping insert).
-          if (!/already exists|duplicate column/i.test(e.message)) throw e
-        }
-      }
-    }
-    db.prepare('INSERT INTO _migrations VALUES (?, ?)').run(folder, Date.now())
-  }
-
-  db.close()
 }
 
 // ─── Window ───────────────────────────────────────────────────────────────────
