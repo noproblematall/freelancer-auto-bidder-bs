@@ -32,6 +32,9 @@ model User {
   // Account-wide bid caps (Settings → Auto-Bidding); shared by every profile
   maxBidsPerHour  Int     @default(8)     @map("max_bids_per_hour")
   maxBidsPerDay   Int     @default(80)    @map("max_bids_per_day")
+  // How many bid history records to keep; older ones are removed once a day
+  // (services/bidding/historyRetention.js)
+  bidHistoryLimit Int     @default(50000) @map("bid_history_limit")
 
   // Global Schedule Settings
   scheduleEnabled   Boolean  @default(false) @map("schedule_enabled")

@@ -11,6 +11,7 @@ const { getSelf } = require('../services/freelancer/users');
 const { isValidWebhookUrl } = require('../services/notifications/webhook');
 const logger = require('../utils/logger');
 const { defaultJobFiltersJson, defaultScheduleWeekJson, defaultFreelancerProfile, defaultBidProfiles, DEFAULT_HOURLY_RATE } = require('../../prisma/seed');
+const { MIN_BID_HISTORY_LIMIT, MAX_BID_HISTORY_LIMIT } = require('../services/bidding/historyRetention');
 const { resolveScheduleWeek, validateScheduleWeek, serializeScheduleWeek } = require('../services/bidding/scheduleWeek');
 const { loadDefaultPrompt } = require('../services/openai/promptLoader');
 
@@ -375,6 +376,7 @@ router.get('/status', authMiddleware, async (req, res, next) => {
         periodMaxDays: true,
         periodFallbackDays: true,
         aiBidPercentage: true,
+        bidHistoryLimit: true,
         reviewMode: true,
         skillsSummary: true,
         experienceSummary: true,
@@ -422,6 +424,7 @@ router.get('/status', authMiddleware, async (req, res, next) => {
         periodMaxDays: user.periodMaxDays,
         periodFallbackDays: user.periodFallbackDays,
         aiBidPercentage: user.aiBidPercentage,
+        bidHistoryLimit: user.bidHistoryLimit,
         reviewMode: user.reviewMode,
         skillsSummary: user.skillsSummary || '',
         experienceSummary: user.experienceSummary || '',
@@ -520,6 +523,7 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
       periodMaxDays,
       periodFallbackDays,
       aiBidPercentage,
+      bidHistoryLimit,
       reviewMode,
       skillsSummary,
       experienceSummary,
@@ -664,6 +668,15 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
         return res.status(400).json({ error: 'AI bid percentage must be between 1 and 200' });
       }
       data.aiBidPercentage = pct;
+    }
+
+    // How many bid history records to keep; older ones are removed once a day.
+    if (bidHistoryLimit !== undefined) {
+      const n = Number(bidHistoryLimit);
+      if (!Number.isInteger(n) || n < MIN_BID_HISTORY_LIMIT || n > MAX_BID_HISTORY_LIMIT) {
+        return res.status(400).json({ error: `Bid history limit must be a whole number between ${MIN_BID_HISTORY_LIMIT} and ${MAX_BID_HISTORY_LIMIT}` });
+      }
+      data.bidHistoryLimit = n;
     }
 
     // Delivery period bounds for AI-estimated periods (shared by every profile):
@@ -875,6 +888,7 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
       periodMaxDays: true,
       periodFallbackDays: true,
       aiBidPercentage: true,
+      bidHistoryLimit: true,
       reviewMode: true,
       skillsSummary: true,
       experienceSummary: true,
@@ -953,6 +967,7 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
         periodMaxDays: user.periodMaxDays,
         periodFallbackDays: user.periodFallbackDays,
         aiBidPercentage: user.aiBidPercentage,
+        bidHistoryLimit: user.bidHistoryLimit,
         reviewMode: user.reviewMode,
         skillsSummary: user.skillsSummary || '',
         experienceSummary: user.experienceSummary || '',

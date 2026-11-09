@@ -60,6 +60,8 @@ export default function SettingsPage() {
   const [hourlyRateMessage, setHourlyRateMessage] = useState(null)
   const [aiBidPercentage, setAiBidPercentage] = useState(user?.aiBidPercentage ?? 100)
   const [aiBidPercentageMessage, setAiBidPercentageMessage] = useState(null)
+  const [bidHistoryLimit, setBidHistoryLimit] = useState(user?.bidHistoryLimit ?? 50000)
+  const [bidHistoryLimitMessage, setBidHistoryLimitMessage] = useState(null)
   const [periodMinDays, setPeriodMinDays] = useState(user?.periodMinDays ?? '')
   const [periodMaxDays, setPeriodMaxDays] = useState(user?.periodMaxDays ?? '')
   const [periodFallbackDays, setPeriodFallbackDays] = useState(user?.periodFallbackDays ?? 7)
@@ -143,6 +145,7 @@ export default function SettingsPage() {
     if (user?.maxBidsPerDay !== undefined) setMaxBidsPerDay(user.maxBidsPerDay)
     if (user?.hourlyRate !== undefined) setHourlyRate(user.hourlyRate ?? '')
     if (user?.aiBidPercentage !== undefined) setAiBidPercentage(user.aiBidPercentage ?? 100)
+    if (user?.bidHistoryLimit !== undefined) setBidHistoryLimit(user.bidHistoryLimit ?? 50000)
     if (user?.periodMinDays !== undefined) setPeriodMinDays(user.periodMinDays ?? '')
     if (user?.periodMaxDays !== undefined) setPeriodMaxDays(user.periodMaxDays ?? '')
     if (user?.periodFallbackDays !== undefined) setPeriodFallbackDays(user.periodFallbackDays ?? 7)
@@ -338,6 +341,23 @@ export default function SettingsPage() {
       setTimeout(() => setAiBidPercentageMessage(null), 2500)
     } catch {
       setAiBidPercentageMessage({ type: 'error', text: 'Failed to save — try again.' })
+    }
+  }
+
+  // How many bid history records to keep (1,000–1,000,000), saved on blur
+  async function saveBidHistoryLimit(raw) {
+    let value = Math.round(parseFloat(raw))
+    if (isNaN(value)) value = 50000
+    if (value < 1000) value = 1000
+    if (value > 1000000) value = 1000000
+    setBidHistoryLimit(value)
+    setBidHistoryLimitMessage(null)
+    try {
+      await updateSettings({ bidHistoryLimit: value })
+      setBidHistoryLimitMessage({ type: 'success', text: 'Saved.' })
+      setTimeout(() => setBidHistoryLimitMessage(null), 2500)
+    } catch {
+      setBidHistoryLimitMessage({ type: 'error', text: 'Failed to save — try again.' })
     }
   }
 
@@ -1571,6 +1591,36 @@ export default function SettingsPage() {
                       {periodMessage.text}
                     </span>
                   )}
+                </p>
+              </div>
+
+              <div className="p-4 rounded-lg bg-slate-50 dark:bg-navy-900/50 border border-slate-200 dark:border-white/8">
+                <label htmlFor="bid-history-limit" className="block text-sm font-medium text-navy-950 dark:text-white mb-2">
+                  Bid History Limit
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    id="bid-history-limit"
+                    type="number"
+                    min="1000"
+                    max="1000000"
+                    step="1000"
+                    value={bidHistoryLimit}
+                    onChange={(e) => setBidHistoryLimit(e.target.value)}
+                    onBlur={(e) => saveBidHistoryLimit(e.target.value)}
+                    className="w-32 px-3 py-2 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500/20 focus:border-navy-500 transition-colors"
+                  />
+                  <span className="text-sm text-slate-700 dark:text-slate-200">records kept</span>
+                  {bidHistoryLimitMessage && (
+                    <span className={`text-xs font-medium ${
+                      bidHistoryLimitMessage.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                    }`}>
+                      {bidHistoryLimitMessage.text}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-700 dark:text-slate-200 mt-2">
+                  Once a day, bid history beyond this many records is removed, oldest first. Won bids and bids from the last 7 days are always kept.
                 </p>
               </div>
 

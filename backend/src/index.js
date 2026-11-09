@@ -144,6 +144,10 @@ const server = app.listen(env.port, '127.0.0.1', () => {
   // Start the meeting reminder service (checks every minute for upcoming meetings)
   const { startMeetingReminder } = require('./services/meetings/meetingReminder');
   startMeetingReminder();
+
+  // Trim each account's bid history to its limit (shortly after start, then daily)
+  const { startHistoryRetention } = require('./services/bidding/historyRetention');
+  startHistoryRetention();
 });
 
 // Without this, an async listen error (e.g. another app already holds the port)
