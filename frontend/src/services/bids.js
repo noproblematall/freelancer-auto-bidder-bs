@@ -40,6 +40,12 @@ export async function placeNowBid(id) {
   return data
 }
 
+// Why nothing has been bid in the last two hours (idle:false when something was)
+export async function getIdleReport() {
+  const { data } = await api.get('/bids/idle')
+  return data
+}
+
 export async function getBidStats(period) {
   const { data } = await api.get('/bids/stats', { params: period ? { period } : {} })
   return data

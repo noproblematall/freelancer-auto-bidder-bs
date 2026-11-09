@@ -101,7 +101,7 @@ function getDetailedSkipReason(project, activeProfiles, userBids) {
 
 export default function ProjectsPage() {
   const { freelancer } = useAuth()
-  const { projects, totalCount, loading, searching, error, fetchProjects, searchFreelancer, updateProject } = useProjects()
+  const { projects, totalCount, hiddenCount, loading, searching, error, fetchProjects, searchFreelancer, updateProject } = useProjects()
 
   const [query, setQuery] = useState('')
   const [showFilters, setShowFilters] = useState(false)
@@ -208,7 +208,11 @@ export default function ProjectsPage() {
     <div className="max-w-5xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-navy-950 dark:text-white">Projects</h1>
-        <p className="text-sm text-slate-700 dark:text-slate-200 mt-1">Browse and search projects from Freelancer.com</p>
+        <p className="text-sm text-slate-700 dark:text-slate-200 mt-1">
+          Projects from Freelancer.com that match your{' '}
+          <Link to="/job-filters" className="font-medium text-navy-700 dark:text-emerald-400 hover:underline">Job Filters</Link>
+          {hiddenCount > 0 && <span className="text-slate-500 dark:text-slate-400"> · {hiddenCount.toLocaleString()} hidden by the filters</span>}
+        </p>
       </div>
 
       {/* Search & Filter Bar */}

@@ -4,6 +4,7 @@ const authMiddleware = require('../middleware/auth');
 const flClient = require('../middleware/freelancerClient');
 const { placeBid, retractBid, MILESTONE_PERCENTAGE } = require('../services/freelancer/bids');
 const logger = require('../utils/logger');
+const { explainIdle } = require('../services/bidding/idleReport');
 
 const router = express.Router();
 
@@ -17,6 +18,17 @@ const BID_PROJECT_INCLUDE = {
     select: { id: true, name: true },
   },
 };
+
+// GET /api/bids/idle — Why nothing has been bid lately (must be before /:id).
+// { idle:false } while a bid was placed or queued in the last two hours;
+// otherwise the reasons, for the Bid History page to show.
+router.get('/idle', async (req, res, next) => {
+  try {
+    res.json(await explainIdle(req.userId));
+  } catch (err) {
+    next(err);
+  }
+});
 
 // GET /api/bids/stats — Bid statistics (must be before /:id)
 router.get('/stats', async (req, res, next) => {

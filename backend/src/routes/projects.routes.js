@@ -6,7 +6,7 @@ const { searchProjects, getProjectById, getJobs } = require('../services/freelan
 const { createOpenAIClient } = require('../services/openai/client');
 const { analyzeProject } = require('../services/openai/analyzer');
 const { generateProposal } = require('../services/openai/proposalGenerator');
-const { applyAccountSettings } = require('../services/bidding/jobFilters');
+const { applyAccountSettings, loadJobFilters, matchesJobFilters, jobFiltersWhere, languageList } = require('../services/bidding/jobFilters');
 const { decrypt } = require('../utils/tokenManager');
 const logger = require('../utils/logger');
 
@@ -37,6 +37,7 @@ async function upsertProjects(freelancerProjects) {
       budgetMin: p.budget?.minimum ?? null,
       budgetMax: p.budget?.maximum ?? null,
       currency: p.currency?.code || 'USD',
+      language: p.language ? String(p.language).toLowerCase() : null,
       jobIds: p.jobs ? JSON.stringify(p.jobs.map(j => ({ id: j.id, name: j.name }))) : null,
       ownerId: p.owner_id ?? null,
       ownerCountry: ownerCountry,
@@ -62,7 +63,15 @@ async function upsertProjects(freelancerProjects) {
 // POST /api/projects/search — Search Freelancer API, upsert to DB
 router.post('/search', flClient, async (req, res, next) => {
   try {
-    const { query, projectTypes, minBudget, maxBudget, jobIds, countries, languages, limit, offset } = req.body;
+    const { query, projectTypes, minBudget, maxBudget, jobIds, limit, offset } = req.body;
+
+    // The account's Job Filters apply here as they do to automatic bidding:
+    // Freelancer is asked only for the chosen languages and allowed countries,
+    // and the rest (exclusions, currencies, budgets) is checked on the results.
+    const jobFilters = await loadJobFilters(req.userId);
+    const filterLanguages = languageList(jobFilters.languages);
+    const countries = jobFilters.countries.length > 0 ? jobFilters.countries : req.body.countries;
+    const languages = filterLanguages.length > 0 ? filterLanguages : req.body.languages;
 
     const result = await searchProjects(req.flClient, {
       query, projectTypes, minBudget, maxBudget, jobIds, countries, languages,
@@ -70,10 +79,12 @@ router.post('/search', flClient, async (req, res, next) => {
       offset: offset || 0,
     });
 
-    const projects = await upsertProjects(result.projects || []);
+    const found = await upsertProjects(result.projects || []);
+    const projects = found.filter(p => matchesJobFilters(p, jobFilters));
 
     res.json({
       projects,
+      hiddenCount: found.length - projects.length,
       totalCount: result.total_count || 0,
       offset: offset || 0,
       limit: limit || 20,
@@ -108,10 +119,16 @@ router.get('/', async (req, res, next) => {
       ];
     }
 
+    // Only projects that pass the account's Job Filters are listed. The count
+    // of the ones left out is returned so the page can say so.
+    const unfilteredWhere = { ...where };
+    const filterConditions = jobFiltersWhere(await loadJobFilters(req.userId));
+    if (filterConditions.length > 0) where.AND = filterConditions;
+
     const allowedSorts = ['discoveredAt', 'budgetMax', 'bidCount', 'relevanceScore', 'timeSubmitted'];
     const orderField = allowedSorts.includes(sortBy) ? sortBy : 'discoveredAt';
 
-    const [rawProjects, totalCount] = await Promise.all([
+    const [rawProjects, totalCount, unfilteredCount] = await Promise.all([
       prisma.project.findMany({
         where,
         orderBy: { [orderField]: sortOrder === 'asc' ? 'asc' : 'desc' },
@@ -119,7 +136,9 @@ router.get('/', async (req, res, next) => {
         skip: parseInt(offset),
       }),
       prisma.project.count({ where }),
+      filterConditions.length > 0 ? prisma.project.count({ where: unfilteredWhere }) : null,
     ]);
+    const hiddenCount = unfilteredCount == null ? 0 : Math.max(0, unfilteredCount - totalCount);
 
     // Parse stored job data so frontend gets jobNames
     const projects = rawProjects.map(p => {
@@ -135,6 +154,7 @@ router.get('/', async (req, res, next) => {
     res.json({
       projects,
       totalCount,
+      hiddenCount,
       offset: parseInt(offset),
       limit: parseInt(limit),
     });

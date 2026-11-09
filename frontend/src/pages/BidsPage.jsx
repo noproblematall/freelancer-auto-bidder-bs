@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, Link } from 'react-router-dom'
 import { useBids } from '../hooks/useBids'
 import { useConfirm } from '../components/ConfirmDialog'
 import { timeAgo, formatAmount } from '../utils/formatters'
@@ -46,7 +46,7 @@ const STATUS_COLORS = {
 }
 
 export default function BidsPage() {
-  const { bids, totalCount, stats, loading, error, fetchBids, fetchStats, retract, retry, placeNow, cancel, update } = useBids()
+  const { bids, totalCount, stats, idle, loading, error, fetchBids, fetchStats, retract, retry, placeNow, cancel, update } = useBids()
   const confirm = useConfirm()
   const [searchParams] = useSearchParams()
   // Honor deep links like /bids?filter=converted (Dashboard stat cards)
@@ -501,6 +501,39 @@ export default function BidsPage() {
           )}
         </div>
       </div>
+
+      {/* Idle explanation: nothing bid or queued for two hours, and why */}
+      {idle?.idle && (
+        <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+          <div className="flex items-start gap-3">
+            <svg className="w-5 h-5 mt-0.5 text-amber-500 dark:text-amber-400 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                {idle.lastBidAt
+                  ? `No bid in the last ${Math.round(idle.windowMinutes / 60)} hours — last one ${timeAgo(idle.lastBidAt)}`
+                  : 'No bid has been placed yet'}
+              </p>
+              <ul className="mt-2 space-y-1.5">
+                {idle.reasons.map((r) => (
+                  <li key={r.kind} className="text-sm text-amber-800 dark:text-amber-200">
+                    <span className="font-medium">{r.title}.</span>
+                    {r.detail && <span className="text-amber-700 dark:text-amber-300/90"> {r.detail}</span>}
+                  </li>
+                ))}
+              </ul>
+              {idle.runs && idle.runs.count > 0 && (
+                <p className="mt-2 text-xs text-amber-700/80 dark:text-amber-300/70">
+                  Last {Math.round(idle.windowMinutes / 60)} hours: {idle.runs.count} run{idle.runs.count === 1 ? '' : 's'}, {idle.runs.searched} projects found, {idle.runs.filtered} new after filters, {idle.runs.analyzed} analyzed, {idle.runs.qualified} relevant
+                  {idle.runs.errors > 0 ? `, ${idle.runs.errors} errors` : ''}.{' '}
+                  <Link to="/activity" className="underline hover:text-amber-900 dark:hover:text-amber-200">Activity Logs</Link>
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Review queue callout */}
       {stats?.pendingReview > 0 && activeFilter !== 'pending_review' && (

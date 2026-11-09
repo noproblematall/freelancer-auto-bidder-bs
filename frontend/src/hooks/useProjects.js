@@ -4,6 +4,8 @@ import * as projectsApi from '../services/projects'
 export function useProjects() {
   const [projects, setProjects] = useState([])
   const [totalCount, setTotalCount] = useState(0)
+  // Stored projects left out because they do not pass the account's Job Filters
+  const [hiddenCount, setHiddenCount] = useState(0)
   const [loading, setLoading] = useState(false)
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState(null)
@@ -15,6 +17,7 @@ export function useProjects() {
       const data = await projectsApi.getProjects(params)
       setProjects(data.projects)
       setTotalCount(data.totalCount)
+      setHiddenCount(data.hiddenCount || 0)
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to load projects')
     } finally {
@@ -42,5 +45,5 @@ export function useProjects() {
     setProjects(prev => prev.map(p => p.id === updatedProject.id ? { ...p, ...updatedProject } : p))
   }, [])
 
-  return { projects, totalCount, loading, searching, error, fetchProjects, searchFreelancer, updateProject }
+  return { projects, totalCount, hiddenCount, loading, searching, error, fetchProjects, searchFreelancer, updateProject }
 }

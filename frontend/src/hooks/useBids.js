@@ -5,6 +5,7 @@ export function useBids() {
   const [bids, setBids] = useState([])
   const [totalCount, setTotalCount] = useState(0)
   const [stats, setStats] = useState(null)
+  const [idle, setIdle] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
@@ -77,6 +78,11 @@ export function useBids() {
     } catch {
       // silent fail for stats
     }
+    try {
+      setIdle(await bidsApi.getIdleReport())
+    } catch {
+      // silent fail: the page just shows no explanation
+    }
   }, [])
 
   // All mutations bump the generation in `finally`: even a FAILED place/retry
@@ -132,5 +138,5 @@ export function useBids() {
     }
   }, [])
 
-  return { bids, totalCount, stats, loading, error, fetchBids, fetchStats, retract, retry, placeNow, cancel, update }
+  return { bids, totalCount, stats, idle, loading, error, fetchBids, fetchStats, retract, retry, placeNow, cancel, update }
 }

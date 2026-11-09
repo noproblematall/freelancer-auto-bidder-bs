@@ -1,5 +1,6 @@
 const prisma = require('../../config/database');
 const logger = require('../../utils/logger');
+const { COUNTRY_TO_REGION } = require('../../utils/regions');
 
 // Job filters live on the User row (users.job_filters, JSON) and narrow the
 // project search for EVERY bidding profile: which client countries, regions
@@ -141,6 +142,102 @@ function mergeJobFilters(profile, filters) {
   return merged;
 }
 
+// ── Applying job filters to stored projects ──────────────────────────────────
+// The same rules the bidding engine applies after a search, for the Projects
+// page: one version as a plain test for a single project, one as a database
+// condition so paging and counts stay correct. A project whose country,
+// language or type is unknown is kept, exactly as the engine keeps it.
+
+// "en, es" → ['en', 'es']
+function languageList(text) {
+  return String(text || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+}
+
+// Every country code the filters rule out: the listed countries plus every
+// country of an excluded region, minus the exceptions (an exception always wins).
+function excludedCountryCodes(filters) {
+  const out = new Set(filters.excludedCountries);
+  if (filters.excludedRegions.length > 0) {
+    for (const [code, region] of Object.entries(COUNTRY_TO_REGION)) {
+      if (filters.excludedRegions.includes(region)) out.add(code);
+    }
+  }
+  for (const code of filters.countryExceptions) out.delete(code);
+  return [...out];
+}
+
+// Budget bounds for one kind of project; the filter numbers are compared with
+// the project's own budget figures, as the engine does.
+function budgetBounds(filters, kind) {
+  return kind === 'hourly'
+    ? { min: filters.budgetMinHourly, max: filters.budgetMaxHourly }
+    : { min: filters.budgetMinFixed, max: filters.budgetMaxFixed };
+}
+
+// True when a stored project row passes the (parsed) job filters.
+function matchesJobFilters(project, filters) {
+  if (isEmptyJobFilters(filters)) return true;
+
+  const country = project.ownerCountry ? String(project.ownerCountry).toUpperCase() : null;
+  if (country) {
+    if (filters.countries.length > 0 && !filters.countries.includes(country)) return false;
+    if (excludedCountryCodes(filters).includes(country)) return false;
+  }
+
+  if (project.currency && filters.excludedCurrencies.includes(String(project.currency).toUpperCase())) return false;
+
+  const languages = languageList(filters.languages);
+  if (languages.length > 0 && project.language && !languages.includes(String(project.language).toLowerCase())) return false;
+
+  if (project.projectType === 'fixed' || project.projectType === 'hourly') {
+    const { min, max } = budgetBounds(filters, project.projectType);
+    if (min != null) {
+      const reachesMin = (project.budgetMin != null && project.budgetMin >= min) || (project.budgetMax != null && project.budgetMax >= min);
+      if (!reachesMin) return false;
+    }
+    if (max != null && project.budgetMax != null && project.budgetMax > max) return false;
+  }
+  return true;
+}
+
+// The same test as a list of Prisma conditions for `where: { AND: [...] }`.
+function jobFiltersWhere(filters) {
+  const and = [];
+  if (isEmptyJobFilters(filters)) return and;
+
+  if (filters.countries.length > 0) {
+    and.push({ OR: [{ ownerCountry: null }, { ownerCountry: { in: filters.countries } }] });
+  }
+  const excluded = excludedCountryCodes(filters);
+  if (excluded.length > 0) {
+    and.push({ OR: [{ ownerCountry: null }, { ownerCountry: { notIn: excluded } }] });
+  }
+  if (filters.excludedCurrencies.length > 0) {
+    and.push({ currency: { notIn: filters.excludedCurrencies } });
+  }
+  const languages = languageList(filters.languages);
+  if (languages.length > 0) {
+    and.push({ OR: [{ language: null }, { language: { in: languages } }] });
+  }
+
+  const kindCondition = (kind) => {
+    const { min, max } = budgetBounds(filters, kind);
+    const parts = [];
+    if (min != null) parts.push({ OR: [{ budgetMin: { gte: min } }, { budgetMax: { gte: min } }] });
+    if (max != null) parts.push({ OR: [{ budgetMax: null }, { budgetMax: { lte: max } }] });
+    return parts.length > 0 ? { projectType: kind, AND: parts } : { projectType: kind };
+  };
+  if (NUMBER_FIELDS.some(f => filters[f] != null)) {
+    and.push({ OR: [
+      kindCondition('fixed'),
+      kindCondition('hourly'),
+      { projectType: null },
+      { projectType: { notIn: ['fixed', 'hourly'] } },
+    ] });
+  }
+  return and;
+}
+
 // Build the effective profile the engine and the AI routes work with: the
 // profile row plus the account's job filters, review mode, hourly rate and AI context.
 // When `profile` is null (an ad-hoc analysis with no profile picked) a bare
@@ -202,5 +299,9 @@ module.exports = {
   isEmptyJobFilters,
   loadJobFilters,
   mergeJobFilters,
+  languageList,
+  excludedCountryCodes,
+  matchesJobFilters,
+  jobFiltersWhere,
   applyAccountSettings,
 };

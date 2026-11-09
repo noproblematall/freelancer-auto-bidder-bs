@@ -314,6 +314,7 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
       budgetMin: p.budget?.minimum ?? null,
       budgetMax: p.budget?.maximum ?? null,
       currency: p.currency?.code || 'USD',
+      language: p.language ? String(p.language).toLowerCase() : null,
       jobIds: p.jobs ? JSON.stringify(p.jobs.map(j => ({ id: j.id, name: j.name }))) : null,
       ownerId: p.owner_id ?? null,
       ownerCountry: ownerCountry,

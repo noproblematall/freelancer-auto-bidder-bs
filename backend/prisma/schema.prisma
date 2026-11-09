@@ -165,6 +165,9 @@ model Project {
   budgetMin           Float?    @map("budget_min")
   budgetMax           Float?    @map("budget_max")
   currency            String    @default("USD")
+  // Language code Freelancer reports for the posting ("en", "es"); NULL on rows
+  // stored before this column existed. Used by the Job Filters language list.
+  language            String?
   jobIds              String?   @map("job_ids")
   ownerId             Int?      @map("owner_id")
   ownerCountry        String?   @map("owner_country")

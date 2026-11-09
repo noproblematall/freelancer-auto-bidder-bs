@@ -7,6 +7,7 @@ const { checkGlobalSchedule } = require('./scheduleChecker');
 const logger = require('../../utils/logger');
 
 let isRunning = false;
+let currentRunStartedAt = null; // when the run in progress began, for the idle report
 let cronJob = null;
 let shutdownHandlersRegistered = false;
 let lastStallAlertAt = 0; // throttle stall alerts to once per hour
@@ -20,6 +21,7 @@ async function runAllActiveProfiles() {
     return;
   }
   isRunning = true; // Set immediately — before any await — to prevent concurrent runs
+  currentRunStartedAt = runStartTime;
 
   // Clean up any bids left in 'pending' from a previous interrupted run before
   // processing new ones. This ensures skipped-project logic doesn't block re-bidding
@@ -53,6 +55,7 @@ async function runAllActiveProfiles() {
   if (!scheduleCheck.allowed) {
     logger.info(`Scheduler: outside schedule window - ${scheduleCheck.reason}`);
     isRunning = false;
+    currentRunStartedAt = null;
     return;
   }
   let totalResults = {
@@ -255,6 +258,7 @@ async function runAllActiveProfiles() {
     }
   } finally {
     isRunning = false;
+    currentRunStartedAt = null;
   }
 }
 
@@ -337,6 +341,7 @@ function getStatus() {
   return {
     running: !!cronJob,
     processing: isRunning,
+    currentRunStartedAt,
   };
 }
 
