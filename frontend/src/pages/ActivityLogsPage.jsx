@@ -37,6 +37,9 @@ const ACTION_COLORS = {
   openai_stall_detected: 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
   openai_not_configured: 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
   token_refresh_failed: 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
+  freelancer_not_connected: 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
+  project_search_failed: 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
+  bid_cap_reached: 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
   bid_queued_for_review: 'bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400',
   bid_placed_manual: 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400',
 
@@ -52,6 +55,9 @@ const ACTION_LABELS = {
   openai_stall_detected: 'OpenAI Stall Detected',
   openai_not_configured: 'OpenAI Not Configured',
   token_refresh_failed: 'Freelancer Connection Expired',
+  freelancer_not_connected: 'Freelancer Not Connected',
+  project_search_failed: 'Project Search Failed',
+  bid_cap_reached: 'Bid Limit Reached',
   bid_placed: 'Bid Placed',
   bid_placed_manual: 'Bid Approved & Placed',
   bid_queued_for_review: 'Draft Queued for Review',
@@ -133,6 +139,15 @@ export default function ActivityLogsPage() {
             <div><span className="text-slate-500 dark:text-slate-400">Queued for Review:</span> <span className="font-medium text-violet-600 dark:text-violet-400">{details.results.queued}</span></div>
           )}
           <div><span className="text-slate-500 dark:text-slate-400">Projects Searched:</span> <span className="font-medium">{details.results?.searched || 0}</span></div>
+          <div><span className="text-slate-500 dark:text-slate-400">New After Filters:</span> <span className="font-medium">{details.results?.filtered || 0}</span></div>
+          <div><span className="text-slate-500 dark:text-slate-400">Analyzed by AI:</span> <span className="font-medium">{details.results?.analyzed || 0}</span></div>
+          <div><span className="text-slate-500 dark:text-slate-400">Passed Relevance:</span> <span className="font-medium">{details.results?.qualified || 0}</span></div>
+          {details.results?.errors > 0 && (
+            <div><span className="text-slate-500 dark:text-slate-400">Errors:</span> <span className="font-medium text-red-600 dark:text-red-400">{details.results.errors}</span></div>
+          )}
+          {details.results?.openaiError && (
+            <div className="col-span-2 text-red-600 dark:text-red-400">AI error: {details.results.openaiError}</div>
+          )}
           <div><span className="text-slate-500 dark:text-slate-400">Duration:</span> <span className="font-medium">{duration}s</span></div>
         </div>
       )
@@ -148,7 +163,7 @@ export default function ActivityLogsPage() {
     }
 
     // Operational problems: render the human message, never a JSON blob
-    if (['scheduler_auto_paused', 'openai_stall_detected', 'openai_not_configured', 'token_refresh_failed'].includes(log.action)) {
+    if (['scheduler_auto_paused', 'openai_stall_detected', 'openai_not_configured', 'token_refresh_failed', 'freelancer_not_connected', 'project_search_failed', 'bid_cap_reached'].includes(log.action)) {
       return (
         <div className="text-xs text-amber-700 dark:text-amber-400 space-y-0.5">
           {(details.message || details.reason) && <div>{details.message || details.reason}</div>}

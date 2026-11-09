@@ -92,10 +92,14 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
   // Check if already at limits
   if (bidsThisHour >= maxBidsPerHour) {
     logger.info(`Profile "${profile.name}": account hourly limit reached (${bidsThisHour}/${maxBidsPerHour})`);
+    await logProblemOnce(profile.userId, 'bid_cap_reached',
+      `Hourly bid limit reached (${bidsThisHour} of ${maxBidsPerHour}). Drafts waiting for review count too. Bidding resumes when the hour rolls over.`, 60 * 60 * 1000);
     return results;
   }
   if (bidsLast24h >= maxBidsPerDay) {
     logger.info(`Profile "${profile.name}": account daily limit reached (${bidsLast24h}/${maxBidsPerDay})`);
+    await logProblemOnce(profile.userId, 'bid_cap_reached',
+      `Daily bid limit reached (${bidsLast24h} of ${maxBidsPerDay}). Drafts waiting for review count too. Raise the limit in Settings or wait.`, 60 * 60 * 1000);
     return results;
   }
 
@@ -110,12 +114,16 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
   const tokenRecord = await prisma.freelancerToken.findUnique({ where: { userId: profile.userId } });
   if (!tokenRecord) {
     logger.warn(`No Freelancer token for user ${profile.userId}`);
+    await logProblemOnce(profile.userId, 'freelancer_not_connected',
+      'No Freelancer account is connected, so no projects can be searched. Connect it in Settings.');
     return results;
   }
 
   const freelancerUid = parseInt(tokenRecord.freelancerUid);
   if (!tokenRecord.freelancerUid || isNaN(freelancerUid)) {
     logger.warn(`Invalid or missing Freelancer UID for user ${profile.userId} — re-authentication required`);
+    await logProblemOnce(profile.userId, 'freelancer_not_connected',
+      'The Freelancer connection is incomplete (no account id). Reconnect in Settings to resume bidding.');
     return results;
   }
 
@@ -141,10 +149,12 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
   if (willExpireSoon(tokenRecord.expiresAt)) {
     if (!tokenRecord.refreshToken) {
       logger.warn(`Freelancer token expired and no refresh token available for user ${profile.userId} — re-authentication required`);
+      await logProblemOnce(profile.userId, 'token_refresh_failed', 'Freelancer connection expired and cannot be renewed automatically. Reconnect in Settings to resume bidding.');
       return results;
     }
     if (!user?.freelancerClientId || !user?.freelancerClientSecret) {
       logger.warn(`Freelancer token expired for user ${profile.userId} but no API credentials configured — re-authentication required`);
+      await logProblemOnce(profile.userId, 'token_refresh_failed', 'Freelancer connection expired and cannot be renewed automatically. Reconnect in Settings to resume bidding.');
       return results;
     }
     try {
@@ -154,6 +164,7 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
         decryptedSecret = decrypt(user.freelancerClientSecret);
       } catch (e) {
         logger.error(`Failed to decrypt Freelancer client secret for user ${profile.userId}: ${e.message}`);
+        await logProblemOnce(profile.userId, 'token_refresh_failed', 'Freelancer connection expired and cannot be renewed automatically. Reconnect in Settings to resume bidding.');
         return results;
       }
       const refreshed = await refreshAccessToken(decrypt(tokenRecord.refreshToken), {
@@ -237,6 +248,15 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
   } catch (err) {
     logger.error(`Search failed for profile "${profile.name}": ${err.message}`);
     results.errors++;
+    {
+      const status = err.response?.status;
+      const apiMessage = err.response?.data?.message || err.message;
+      const hint = status === 401 || status === 403
+        ? ' Freelancer rejected the connection. Reconnect in Settings.'
+        : status === 429 ? ' Freelancer is rate limiting requests. It will be retried.' : '';
+      await logProblemOnce(profile.userId, 'project_search_failed',
+        `Project search failed${status ? ` (HTTP ${status})` : ''}: ${String(apiMessage).slice(0, 300)}.${hint}`, 60 * 60 * 1000);
+    }
     return results;
   }
 

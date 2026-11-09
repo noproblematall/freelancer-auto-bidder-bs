@@ -19,6 +19,9 @@ const BILLING_ERROR_CODES = new Set([
   'quota_exceeded',
 ]);
 
+// The API answered 200 but with no text (see chatWithModel).
+class EmptyResponseError extends Error {}
+
 function isBillingError(err) {
   const code = err.response?.data?.error?.code;
   const type = err.response?.data?.error?.type;
@@ -41,15 +44,17 @@ function createOpenAIClient(apiKey, model = 'gpt-5.4-mini') {
   });
 
   async function chatWithModel(activeModel, { messages, temperature = 0.7, max_tokens = 1000, response_format }) {
-    // gpt-5.x, o1, o3, o4 reasoning families require `max_completion_tokens`
-    // instead of `max_tokens`, and only accept the default temperature (1).
-    // Normalise both here so all callers keep passing max_tokens/temperature
-    // and don't need to know which model is active.
+    // gpt-5.x, o1, o3, o4 reasoning families only accept the default
+    // temperature (1) and take `max_completion_tokens`, not `max_tokens`.
+    // That cap covers hidden reasoning tokens as well as the visible answer,
+    // so a cap sized for the answer alone (500 for a project analysis) can be
+    // spent entirely on reasoning: the call succeeds with EMPTY content and
+    // finish_reason "length". Every project then fails analysis and nothing
+    // is ever bid. These models therefore get no cap; answer length is set
+    // by the prompt, and the proposal generator trims to Freelancer's limit.
     const isReasoningModel = /^(gpt-5|o1|o3|o4)/i.test(activeModel);
     const body = { model: activeModel, messages };
-    if (isReasoningModel) {
-      body.max_completion_tokens = max_tokens;
-    } else {
+    if (!isReasoningModel) {
       body.max_tokens = max_tokens;
       body.temperature = temperature;
     }
@@ -62,13 +67,20 @@ function createOpenAIClient(apiKey, model = 'gpt-5.4-mini') {
         const response = await client.post('/chat/completions', body);
         const duration = Date.now() - start;
 
-        const content = response.data.choices?.[0]?.message?.content || '';
+        const choice = response.data.choices?.[0];
+        const content = choice?.message?.content || '';
         const usage = response.data.usage || {};
+        if (!content.trim()) {
+          const reasoning = usage.completion_tokens_details?.reasoning_tokens;
+          const why = choice?.message?.refusal ? `refused: ${choice.message.refusal}` : `finish_reason: ${choice?.finish_reason || 'unknown'}`;
+          throw new EmptyResponseError(`${activeModel} returned no text (${why}${reasoning ? `, ${reasoning} reasoning tokens` : ''})`);
+        }
         logger.info(`OpenAI ${activeModel} (${duration}ms) — ${usage.prompt_tokens || '?'}+${usage.completion_tokens || '?'} tokens`);
 
         return { content, usage, modelUsed: activeModel };
       } catch (err) {
         lastError = err;
+        if (err instanceof EmptyResponseError) throw err;
         const status = err.response?.status;
 
         // Billing/quota errors are not retryable — propagate immediately
@@ -110,6 +122,7 @@ function createOpenAIClient(apiKey, model = 'gpt-5.4-mini') {
         );
         return await chatWithModel(FALLBACK_MODEL, options);
       }
+      if (err instanceof EmptyResponseError) throw new Error(`OpenAI API error: ${err.message}`);
       const errorMsg = err.response?.data?.error?.message || err.message;
       throw new Error(`OpenAI API error: ${errorMsg}`);
     }

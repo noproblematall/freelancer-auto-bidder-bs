@@ -67,9 +67,19 @@ async function analyzeProject(openaiClient, project, profile) {
 
   let analysis;
   try {
-    analysis = JSON.parse(content);
+    analysis = JSON.parse(content.replace(/^\s*```(?:json)?\s*/i, '').replace(/\s*```\s*$/, ''));
   } catch (parseErr) {
     throw new Error(`OpenAI returned invalid JSON (response may have been truncated): ${parseErr.message}`);
+  }
+
+  // Cheap models sometimes quote numbers ("85"). A quoted score used to count
+  // as 0 and silently drop the project, so read numeric strings as numbers.
+  for (const field of ['relevance_score', 'estimated_hours', 'suggested_bid_amount', 'suggested_timeline_days']) {
+    const raw = analysis[field];
+    if (typeof raw === 'string' && raw.trim() !== '') {
+      const n = Number(raw.replace(/[^0-9.\-]/g, ''));
+      if (Number.isFinite(n)) analysis[field] = n;
+    }
   }
 
   // Validate relevance_score is in range
