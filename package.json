@@ -1,8 +1,8 @@
 {
   "name": "growlance",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "private": true,
-  "description": "Growlance — Freelance automation tool",
+  "description": "BidPilot — Freelance automation tool",
   "main": "electron/main.js",
   "scripts": {
     "electron:dev": "concurrently -n frontend,electron -c green,yellow \"npm run dev:frontend\" \"wait-on http://localhost:8080 && electron .\"",

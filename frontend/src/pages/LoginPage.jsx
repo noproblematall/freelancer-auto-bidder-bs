@@ -53,16 +53,16 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl overflow-hidden shadow-lg shadow-black/40 mb-4">
-            <img src="/apple-touch-icon.png" alt="Growlance" className="w-full h-full object-cover" />
+            <img src="/apple-touch-icon.png" alt="BidPilot" className="w-full h-full object-cover" />
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Growlance</h1>
+          <h1 className="text-2xl font-bold text-white tracking-tight">BidPilot</h1>
         </div>
 
         {/* Card */}
         <div className="bg-white rounded-2xl border border-white/10 shadow-2xl shadow-black/40 overflow-hidden">
           {isElectron && (
             <div className="p-3 m-4 mb-0 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
-              Growlance normally signs you in automatically — seeing this screen means that failed.{' '}
+              BidPilot normally signs you in automatically — seeing this screen means that failed.{' '}
               <button type="button" onClick={() => window.location.reload()} className="font-semibold underline">
                 Retry automatic sign-in
               </button>

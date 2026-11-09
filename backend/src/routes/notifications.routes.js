@@ -27,7 +27,7 @@ router.post('/telegram/test', authMiddleware, async (req, res, next) => {
       await sendTelegramMessage(
         botToken,
         chatId,
-        '✅ <b>Growlance connected!</b>\n\nYou will receive notifications here whenever someone sends you a message on Freelancer.'
+        '✅ <b>BidPilot connected!</b>\n\nYou will receive notifications here whenever someone sends you a message on Freelancer.'
       );
     }
 
@@ -53,7 +53,7 @@ router.post('/webhook/test', authMiddleware, async (req, res, next) => {
     }
 
     const result = await fireWebhook(user.webhookUrl, 'test', {
-      message: 'Growlance webhook connected! You will receive a message.received event whenever someone messages you on Freelancer.',
+      message: 'BidPilot webhook connected! You will receive a message.received event whenever someone messages you on Freelancer.',
     });
 
     if (!result.ok) {

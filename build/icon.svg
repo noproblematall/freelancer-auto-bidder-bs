@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- BidPilot app icon: lettermark "B" in emerald on a dark navy tile -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b2535"/>
+      <stop offset="1" stop-color="#0d131c"/>
+    </linearGradient>
+    <!-- userSpaceOnUse: a bounding-box gradient cannot paint a zero-width stem -->
+    <linearGradient id="mark" gradientUnits="userSpaceOnUse" x1="0" y1="236" x2="0" y2="788">
+      <stop offset="0" stop-color="#5eead4"/>
+      <stop offset="1" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1024" height="1024" rx="224" fill="url(#tile)"/>
+  <rect x="24" y="24" width="976" height="976" rx="204" fill="none" stroke="#ffffff" stroke-opacity="0.06" stroke-width="8"/>
+  <!-- B: stem plus two bowls in one stroked path, so it stays crisp at every size -->
+  <path fill="none" stroke="url(#mark)" stroke-width="128" stroke-linejoin="round" stroke-linecap="round"
+        d="M 332 788 V 236 H 552 A 136 136 0 0 1 552 508 H 332 M 332 508 H 592 A 140 140 0 0 1 592 788 H 332"/>
+</svg>

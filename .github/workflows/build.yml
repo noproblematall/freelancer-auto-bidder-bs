@@ -66,7 +66,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Growlance-${{ matrix.platform }}
+          name: BidPilot-${{ matrix.platform }}
           path: |
             dist/electron/*.dmg
             dist/electron/*.zip

@@ -1201,7 +1201,7 @@ export default function SettingsPage() {
                   className="w-full px-3.5 py-2.5 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 transition-colors placeholder:text-slate-400"
                 />
                 <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
-                  Growlance sends <span className="font-mono">POST</span> JSON: <span className="font-mono">{'{ event, timestamp, data }'}</span> with sender, message, project, and thread link. Works with Zapier, n8n, Make, or your own server.
+                  BidPilot sends <span className="font-mono">POST</span> JSON: <span className="font-mono">{'{ event, timestamp, data }'}</span> with sender, message, project, and thread link. Works with Zapier, n8n, Make, or your own server.
                 </p>
               </div>
 
@@ -1272,7 +1272,7 @@ export default function SettingsPage() {
             <div className="px-6 py-5 space-y-4">
               <div className="flex items-center justify-between p-4 rounded-lg bg-slate-50 dark:bg-navy-900/50 border border-slate-200 dark:border-white/8">
                 <div>
-                  <p className="text-sm font-medium text-navy-950 dark:text-white">Growlance</p>
+                  <p className="text-sm font-medium text-navy-950 dark:text-white">BidPilot</p>
                   <p className="text-xs text-slate-700 dark:text-slate-200 mt-0.5">
                     {schedulerRunning
                       ? schedulerStatus?.processing ? 'Currently processing active profiles...'

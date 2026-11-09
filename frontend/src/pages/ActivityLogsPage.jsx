@@ -46,8 +46,8 @@ const ACTION_COLORS = {
 
 const ACTION_LABELS = {
   scheduler_check: 'Scheduler Check',
-  scheduler_run_completed: 'Growlance Run Completed',
-  scheduler_run_failed: 'Growlance Run Failed',
+  scheduler_run_completed: 'BidPilot Run Completed',
+  scheduler_run_failed: 'BidPilot Run Failed',
   scheduler_auto_paused: 'Auto-Paused (all profiles deactivated)',
   openai_stall_detected: 'OpenAI Stall Detected',
   openai_not_configured: 'OpenAI Not Configured',

@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:;" />
+    <title>BidPilot Keygen</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      :root { color-scheme: dark; }
+      body {
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        background: #12151b; color: #cbd5e1; min-height: 100vh;
+        -webkit-user-select: none; user-select: none;
+      }
+      header {
+        display: flex; align-items: center; justify-content: space-between; gap: 16px;
+        padding: 18px 24px; border-bottom: 1px solid #232a35;
+      }
+      header h1 { color: #fff; font-size: 1.15rem; font-weight: 700; letter-spacing: -0.01em; display: flex; align-items: center; gap: 10px; }
+      header h1 svg { width: 26px; height: 26px; }
+      header p { color: #64748b; font-size: 0.8rem; margin-top: 2px; }
+      button {
+        border: none; border-radius: 10px; padding: 10px 16px; font-weight: 700; font-size: 0.9rem; cursor: pointer;
+        background: #10b981; color: #0b3b2e; transition: background 0.15s;
+      }
+      button:hover:not(:disabled) { background: #34d399; }
+      button:disabled { opacity: 0.6; cursor: default; }
+      button.ghost { background: #1a2029; border: 1px solid #334e68; color: #cbd5e1; font-weight: 600; }
+      button.ghost:hover:not(:disabled) { border-color: #34d399; color: #fff; background: #1a2029; }
+      button.small { padding: 6px 10px; font-size: 0.78rem; border-radius: 8px; }
+      button.danger { background: transparent; border: 1px solid #3f2a2f; color: #fca5a5; font-weight: 600; }
+      button.danger:hover:not(:disabled) { background: #2a1b1f; border-color: #f87171; }
+      main { padding: 20px 24px; }
+      .empty {
+        margin-top: 60px; text-align: center; color: #64748b; font-size: 0.95rem; line-height: 1.7;
+      }
+      .empty strong { color: #94a3b8; }
+      table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+      th { text-align: left; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; padding: 0 10px 10px; font-weight: 600; }
+      td { padding: 12px 10px; border-top: 1px solid #1e2531; vertical-align: middle; }
+      tr:hover td { background: #161b24; }
+      td.device code { font-family: ui-monospace, Menlo, Consolas, monospace; color: #fff; font-size: 0.95rem; letter-spacing: 0.06em; -webkit-user-select: text; user-select: text; }
+      td.muted { color: #94a3b8; }
+      td.actions { text-align: right; white-space: nowrap; }
+      td.actions button { margin-left: 6px; }
+      .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; }
+      .pill.life { background: #0f2f26; color: #34d399; }
+      .pill.until { background: #2a2410; color: #fbbf24; }
+      .pill.expired { background: #2a1b1f; color: #fca5a5; }
+      .toast {
+        position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+        background: #1a2029; border: 1px solid #334e68; color: #fff; padding: 10px 16px; border-radius: 10px;
+        font-size: 0.85rem; opacity: 0; transition: opacity 0.2s; pointer-events: none;
+      }
+      .toast.show { opacity: 1; }
+
+      /* Modal */
+      .backdrop {
+        position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: none; place-items: center; padding: 24px;
+      }
+      .backdrop.open { display: grid; }
+      .modal {
+        width: 100%; max-width: 440px; background: #161b24; border: 1px solid #2a3443; border-radius: 16px; padding: 24px;
+        box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+      }
+      .modal h2 { color: #fff; font-size: 1.1rem; font-weight: 700; }
+      .modal p.sub { color: #94a3b8; font-size: 0.85rem; margin-top: 6px; line-height: 1.5; }
+      label { display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; margin: 18px 0 8px; }
+      input[type="text"], input[type="number"] {
+        width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid #334e68; background: #1a2029; color: #fff;
+        font-size: 0.95rem; -webkit-user-select: text; user-select: text;
+      }
+      input.mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1.1rem; letter-spacing: 0.1em; text-align: center; text-transform: uppercase; }
+      input:focus { outline: 2px solid #34d399; outline-offset: 2px; border-color: #34d399; }
+      .seg { display: flex; gap: 8px; }
+      .seg button { flex: 1; background: #1a2029; border: 1px solid #334e68; color: #cbd5e1; font-weight: 600; }
+      .seg button.on { border-color: #34d399; color: #fff; background: #0f2f26; }
+      .days { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+      .days[hidden] { display: none; }
+      .days input { width: 110px; }
+      .days span { color: #94a3b8; font-size: 0.85rem; }
+      .modal .row { display: flex; gap: 10px; margin-top: 22px; }
+      .modal .row button { flex: 1; padding: 12px; }
+      .err { color: #fca5a5; font-size: 0.84rem; margin-top: 12px; min-height: 1.2em; }
+      .result code {
+        display: block; margin-top: 14px; padding: 12px; border-radius: 10px; background: #0f131a; border: 1px solid #232a35;
+        font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.72rem; line-height: 1.5; color: #a7f3d0;
+        word-break: break-all; max-height: 120px; overflow: auto; -webkit-user-select: text; user-select: text;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>
+          <svg viewBox="0 0 32 32" aria-hidden="true">
+            <path d="M16 7l7 4v6c0 4.2-2.9 7-7 8-4.1-1-7-3.8-7-8v-6l7-4z" fill="none" stroke="#34d399" stroke-width="2" stroke-linejoin="round" />
+            <path d="M12.5 16.2l2.6 2.6 4.6-5.2" fill="none" stroke="#34d399" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          BidPilot Keygen
+        </h1>
+        <p>Devices allowed to run BidPilot. Each key works on its device only.</p>
+      </div>
+      <button id="addBtn">+ Add device</button>
+    </header>
+
+    <main>
+      <div id="empty" class="empty" hidden>
+        <strong>No devices yet.</strong><br />
+        Click <strong>Add device</strong> and enter the device number shown on the BidPilot activation screen.
+      </div>
+      <table id="table" hidden>
+        <thead>
+          <tr><th>Device number</th><th>Label</th><th>Valid</th><th>Issued</th><th></th></tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <!-- Add device modal -->
+    <div class="backdrop" id="backdrop">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+        <div id="formView">
+          <h2 id="mTitle">Add device</h2>
+          <p class="sub">Enter the device number from the BidPilot activation screen on that computer.</p>
+          <form id="form" autocomplete="off">
+            <label for="device">Device number</label>
+            <input id="device" class="mono" type="text" placeholder="XXXX-XXXX-XXXX-XXXX" maxlength="19" spellcheck="false" />
+            <label for="label">Label <span style="text-transform:none;letter-spacing:0;color:#64748b">(optional)</span></label>
+            <input id="label" type="text" placeholder="e.g. Sam's laptop" maxlength="80" />
+            <label>Validity</label>
+            <div class="seg">
+              <button type="button" id="segLife" class="on">Never expires</button>
+              <button type="button" id="segDays">Expires</button>
+            </div>
+            <div class="days" id="daysRow" hidden>
+              <input id="days" type="number" min="1" max="3650" value="30" />
+              <span>days from today</span>
+            </div>
+            <div class="err" id="err"></div>
+            <div class="row">
+              <button type="button" class="ghost" id="cancel">Cancel</button>
+              <button type="submit" id="gen">Generate key</button>
+            </div>
+          </form>
+        </div>
+        <div id="doneView" hidden>
+          <h2>Key ready</h2>
+          <p class="sub" id="doneSub"></p>
+          <div class="result"><code id="doneKey"></code></div>
+          <div class="row">
+            <button type="button" class="ghost" id="doneCopy">Copy key</button>
+            <button type="button" id="doneSave">Save key file…</button>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <button type="button" class="ghost" id="doneClose">Done</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      var $ = function (id) { return document.getElementById(id) }
+      var rows = $('rows'), table = $('table'), empty = $('empty'), toast = $('toast')
+      var backdrop = $('backdrop'), formView = $('formView'), doneView = $('doneView')
+      var deviceIn = $('device'), labelIn = $('label'), daysIn = $('days'), daysRow = $('daysRow'), err = $('err')
+      var segLife = $('segLife'), segDays = $('segDays'), genBtn = $('gen')
+      var expires = false
+      var currentDevice = null
+      var toastTimer = null
+
+      function showToast(text) {
+        toast.textContent = text
+        toast.classList.add('show')
+        clearTimeout(toastTimer)
+        toastTimer = setTimeout(function () { toast.classList.remove('show') }, 1800)
+      }
+
+      function fmtDate(ms) { return new Date(ms).toLocaleDateString() }
+
+      function validity(d) {
+        if (!d.expiresAt) return '<span class="pill life">Lifetime</span>'
+        if (d.expiresAt < Date.now()) return '<span class="pill expired">Expired ' + fmtDate(d.expiresAt) + '</span>'
+        return '<span class="pill until">Until ' + fmtDate(d.expiresAt) + '</span>'
+      }
+
+      function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] }) }
+
+      async function refresh() {
+        var list = await window.keygen.list()
+        rows.innerHTML = ''
+        table.hidden = list.length === 0
+        empty.hidden = list.length !== 0
+        list.forEach(function (d) {
+          var tr = document.createElement('tr')
+          tr.innerHTML =
+            '<td class="device"><code>' + esc(d.device) + '</code></td>' +
+            '<td class="muted">' + (d.label ? esc(d.label) : '—') + '</td>' +
+            '<td>' + validity(d) + '</td>' +
+            '<td class="muted">' + fmtDate(d.createdAt) + '</td>' +
+            '<td class="actions">' +
+              '<button class="ghost small" data-act="copy">Copy key</button>' +
+              '<button class="ghost small" data-act="save">Save file…</button>' +
+              '<button class="danger small" data-act="remove">Remove</button>' +
+            '</td>'
+          tr.querySelectorAll('button').forEach(function (b) {
+            b.addEventListener('click', function () { act(b.dataset.act, d) })
+          })
+          rows.appendChild(tr)
+        })
+      }
+
+      async function act(kind, d) {
+        if (kind === 'copy') {
+          var r = await window.keygen.copyKey(d.device)
+          showToast(r && r.ok ? 'Key copied' : (r && r.error) || 'Could not copy')
+        } else if (kind === 'save') {
+          var s = await window.keygen.saveKey(d.device)
+          if (s && s.ok) showToast('Saved ' + s.path)
+          else if (s && s.error) showToast(s.error)
+        } else if (kind === 'remove') {
+          if (!confirm('Remove device ' + d.device + '?\n\nIts key stays valid on that computer until you issue it a new key or it expires. Remove it here to issue a new key for this number.')) return
+          await window.keygen.remove(d.device)
+          refresh()
+        }
+      }
+
+      // Auto-format the device number as XXXX-XXXX-XXXX-XXXX while typing
+      deviceIn.addEventListener('input', function () {
+        var hex = deviceIn.value.toUpperCase().replace(/[^0-9A-F]/g, '').slice(0, 16)
+        deviceIn.value = (hex.match(/.{1,4}/g) || []).join('-')
+      })
+
+      function setExpires(on) {
+        expires = on
+        segLife.classList.toggle('on', !on)
+        segDays.classList.toggle('on', on)
+        daysRow.hidden = !on
+        if (on) daysIn.focus()
+      }
+      segLife.addEventListener('click', function () { setExpires(false) })
+      segDays.addEventListener('click', function () { setExpires(true) })
+
+      function openModal() {
+        deviceIn.value = ''
+        labelIn.value = ''
+        daysIn.value = '30'
+        err.textContent = ''
+        setExpires(false)
+        formView.hidden = false
+        doneView.hidden = true
+        backdrop.classList.add('open')
+        setTimeout(function () { deviceIn.focus() }, 50)
+      }
+      function closeModal() { backdrop.classList.remove('open') }
+
+      $('addBtn').addEventListener('click', openModal)
+      $('cancel').addEventListener('click', closeModal)
+      $('doneClose').addEventListener('click', closeModal)
+      backdrop.addEventListener('click', function (e) { if (e.target === backdrop) closeModal() })
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && backdrop.classList.contains('open')) closeModal() })
+
+      $('form').addEventListener('submit', async function (e) {
+        e.preventDefault()
+        err.textContent = ''
+        var device = deviceIn.value.trim()
+        if (device.replace(/-/g, '').length !== 16) {
+          err.textContent = 'The device number has 16 letters and digits, like 3F9A-1C2B-77D0-E4A5.'
+          deviceIn.focus()
+          return
+        }
+        genBtn.disabled = true
+        try {
+          var r = await window.keygen.add({ device: device, label: labelIn.value, days: expires ? daysIn.value : null })
+          if (!r || !r.ok) {
+            err.textContent = (r && r.error) || 'Could not generate the key.'
+            return
+          }
+          currentDevice = r.entry.device
+          $('doneSub').textContent = 'Device ' + r.entry.device + (r.entry.label ? ' · ' + r.entry.label : '') +
+            (r.entry.expiresAt ? ' · valid until ' + fmtDate(r.entry.expiresAt) : ' · lifetime') +
+            '. Send the key file to that computer and load it on the BidPilot activation screen.'
+          $('doneKey').textContent = r.entry.key
+          formView.hidden = true
+          doneView.hidden = false
+          refresh()
+        } finally {
+          genBtn.disabled = false
+        }
+      })
+
+      $('doneCopy').addEventListener('click', async function () {
+        var r = await window.keygen.copyKey(currentDevice)
+        showToast(r && r.ok ? 'Key copied' : 'Could not copy')
+      })
+      $('doneSave').addEventListener('click', async function () {
+        var s = await window.keygen.saveKey(currentDevice)
+        if (s && s.ok) showToast('Saved ' + s.path)
+        else if (s && s.error) showToast(s.error)
+      })
+
+      refresh()
+    </script>
+  </body>
+</html>

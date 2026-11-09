@@ -1,4 +1,57 @@
-# Growlance — Custom Licensing System
+# BidPilot — Licensing
+
+## Current method: device-locked offline keys (November 2026)
+
+No server is involved. The app shows a **device number** on its activation
+screen; the owner runs the **key generator** with that number, and the app
+verifies the resulting key offline with an embedded public key.
+
+- **Device number** — the first 16 hex characters of the device fingerprint
+  (`sha256("growlance:" + machine id)`), shown as `XXXX-XXXX-XXXX-XXXX` with a
+  Copy button. A key only verifies on the device whose number it was made for.
+- **Key** — `GROWL1.` + base64url(payload) + `.` + base64url(Ed25519 signature),
+  payload `{ v: 1, d: "<device number>", iat, exp: ms | null, label? }`. About
+  210 characters; pasted into the app or loaded from the `.key` text file the
+  generator writes. `exp = null` means lifetime; `--days N` makes a key that
+  expires, after which the app relocks and asks for a new key.
+- **Code** — `electron/license-core.js` (verification, no Electron dependency),
+  `electron/license.js` (device number, activation, storage in
+  `userData/.license`), `electron/activation.html` (the screen),
+  `electron/license-public-key.js` (public keys: `offline` for these keys,
+  `server` so installs activated on the old license server stay licensed).
+
+### Key generator (`tools/keygen`)
+
+```
+node tools/keygen/init-keypair.js   # once: writes tools/keygen/.secret/private-key.pem and prints the public key
+node tools/keygen/build.js          # builds dist/keygen/BidPilot-Keygen-Setup.exe with the private key baked in
+```
+
+`BidPilot-Keygen-Setup.exe` is a one-click installer (per user, no admin
+prompt) for a small desktop app (Electron, `tools/keygen/app`); it adds a
+desktop shortcut and starts the app.
+It lists every device that has been issued a key, with label, validity and
+issue date. **Add device** opens a dialog: type the device number (formatted as
+you type), an optional label, and Never expires or Expires in N days; **Generate
+key** shows the key with **Copy key** and **Save key file…** (writes
+`BidPilot-<DEVICE>.key`). Each row also offers Copy key, Save file and Remove.
+The list lives in the app's own user-data folder (`devices.json`); removing a
+device there does not revoke the key already on that computer, it only lets a
+new key be issued for that number.
+
+In BidPilot, click **Load key file…** and pick the file, or paste the key,
+then **Activate**.
+
+**Keep private:** `tools/keygen/.secret/` (git-ignored) and the built
+`BidPilot-Keygen-Setup.exe`. Anyone holding either can issue keys. Back the private
+key up; if it is lost, a new keypair means a new public key in the app and new
+keys for every device. The free trial and the "Get BidPilot" link were removed
+from the activation screen.
+
+---
+
+# Previous method: hosted license server (kept for reference)
+
 
 > Design + setup reference for the node-locked ("one license per device") licensing
 > layer. Build is phased; see **Status** at the bottom.
@@ -154,7 +207,7 @@ node --env-file=.env scripts/license.mjs revoke GROW-XXXXX-XXXXX-XXXXX-XXXXX
 
 `--devices N` sets how many devices that key can run on (default 1; bump it for
 your own multi-machine use). The printed key is what you/your friend enters in
-Growlance to activate.
+BidPilot to activate.
 
 ## Environment variables (Vercel)
 

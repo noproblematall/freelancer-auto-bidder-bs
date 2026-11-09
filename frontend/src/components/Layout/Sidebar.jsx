@@ -103,9 +103,9 @@ export default function Sidebar() {
       <div className="h-16 flex items-center pt-7 px-6 border-b border-slate-100/80 dark:border-white/5" style={{ WebkitAppRegion: 'drag' }}>
         <div className="flex items-center gap-2.5" style={{ WebkitAppRegion: 'no-drag' }}>
           <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0">
-            <img src="/apple-touch-icon.png" alt="Growlance" className="w-full h-full object-cover" />
+            <img src="/apple-touch-icon.png" alt="BidPilot" className="w-full h-full object-cover" />
           </div>
-          <span className="text-lg font-semibold text-navy-950 dark:text-white tracking-tight">Growlance</span>
+          <span className="text-lg font-semibold text-navy-950 dark:text-white tracking-tight">BidPilot</span>
         </div>
       </div>
 
@@ -153,7 +153,7 @@ export default function Sidebar() {
           </button>
         )}
         <p className="px-3 py-1.5 text-xs text-slate-400 dark:text-slate-500">
-          Growlance v{__APP_VERSION__}
+          BidPilot v{__APP_VERSION__}
         </p>
       </div>
     </aside>

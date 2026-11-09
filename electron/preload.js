@@ -7,7 +7,8 @@ contextBridge.exposeInMainWorld('electron', {
   versions: process.versions,
   license: {
     activate: (key) => ipcRenderer.invoke('license:activate', { key }),
-    startTrial: () => ipcRenderer.invoke('license:startTrial'),
+    deviceNumber: () => ipcRenderer.invoke('license:deviceNumber'),
+    pickKeyFile: () => ipcRenderer.invoke('license:pickKeyFile'),
     validate: () => ipcRenderer.invoke('license:validate'),
     deactivate: () => ipcRenderer.invoke('license:deactivate'),
     status: () => ipcRenderer.invoke('license:status'),

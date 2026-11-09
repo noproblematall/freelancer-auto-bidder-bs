@@ -33,7 +33,7 @@ function getDetailedSkipReason(project, activeProfiles, userBids) {
 
     // Check if recently discovered (within last 2 minutes)
     if (minutesSinceDiscovery < 2) {
-      return { text: 'Pending Analysis', tooltip: 'Recently discovered - waiting for next Growlance run' }
+      return { text: 'Pending Analysis', tooltip: 'Recently discovered - waiting for next BidPilot run' }
     }
 
     // Check if user already bid on this project
@@ -94,7 +94,7 @@ function getDetailedSkipReason(project, activeProfiles, userBids) {
     }
 
     // Default: waiting for analysis
-    return { text: 'Not Analyzed', tooltip: 'Waiting for Growlance to analyze this project' }
+    return { text: 'Not Analyzed', tooltip: 'Waiting for BidPilot to analyze this project' }
   }
   return null
 }

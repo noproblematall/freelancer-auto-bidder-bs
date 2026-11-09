@@ -51,8 +51,10 @@ app.use('/api/clients', clientRoutes);
 app.use('/api/job-filters', jobFilterRoutes);
 
 // Health check
+// `instance` lets the Electron shell confirm the server on its port is the
+// backend it just started, not another program (or a dev server) on 3741.
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), instance: process.env.GROWLANCE_INSTANCE_ID || null });
 });
 
 // Serve React app in Electron mode (must be after all API routes)
@@ -67,7 +69,7 @@ if (process.env.ELECTRON_MODE === 'true') {
 app.use(errorHandler);
 
 const server = app.listen(env.port, '127.0.0.1', () => {
-  logger.info(`Growlance backend running on http://localhost:${env.port}`);
+  logger.info(`BidPilot backend running on http://localhost:${env.port}`);
 
   // Pre-flight: verify OpenAI API key is valid and has quota.
   // Runs asynchronously so it never delays server startup.
@@ -96,7 +98,7 @@ const server = app.listen(env.port, '127.0.0.1', () => {
             userId: user.id,
             action: 'openai_preflight_warning',
             details: JSON.stringify({
-              message: `Your OpenAI account has a billing/quota issue with ${user.openaiModel || 'gpt-5.4-mini'}. Growlance has automatically switched to ${modelUsed} for now. To restore your preferred model, add credits at platform.openai.com/account/billing.`,
+              message: `Your OpenAI account has a billing/quota issue with ${user.openaiModel || 'gpt-5.4-mini'}. BidPilot has automatically switched to ${modelUsed} for now. To restore your preferred model, add credits at platform.openai.com/account/billing.`,
               configuredModel: user.openaiModel || 'gpt-5.4-mini',
               fallbackModel: modelUsed,
             }),

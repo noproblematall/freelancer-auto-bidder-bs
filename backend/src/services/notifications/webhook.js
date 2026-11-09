@@ -38,7 +38,7 @@ async function fireWebhook(url, event, data) {
         timeout: TIMEOUT_MS,
         headers: {
           'Content-Type': 'application/json',
-          'User-Agent': 'Growlance-Webhook/1.0',
+          'User-Agent': 'BidPilot-Webhook/1.0',
         },
         // Any HTTP response counts as "delivered" — the receiver's status is
         // their business; we only care that the endpoint was reachable.

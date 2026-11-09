@@ -1,0 +1,9 @@
+{
+  "name": "bidpilot-keygen",
+  "productName": "BidPilot Keygen",
+  "version": "1.0.0",
+  "description": "Issues device-locked BidPilot license keys",
+  "author": "BidPilot",
+  "private": true,
+  "main": "app/main.js"
+}

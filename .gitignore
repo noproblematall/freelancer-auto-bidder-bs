@@ -13,3 +13,6 @@ backend/userData.db-shm
 backend/userData.db-wal
 dist/
 .DS_Store
+# Offline license signing key (tools/keygen) — never commit
+tools/keygen/.secret/
+tools/keygen/app/private-key.generated.js

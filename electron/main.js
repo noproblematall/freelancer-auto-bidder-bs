@@ -6,7 +6,9 @@ const fs = require('fs')
 const crypto = require('crypto')
 const license = require('./license')
 
-// Set app name before any getPath() call so userData is ~/Library/Application Support/Growlance
+// Set app name before any getPath() call so userData stays ~/Library/Application Support/Growlance
+// (%APPDATA%\Growlance on Windows). The product is now called BidPilot, but existing installs keep
+// their database and license in this folder, so the internal name is unchanged on purpose.
 app.setName('Growlance')
 
 // In a packaged app launched from Finder/Dock, process.cwd() may be "/" or a
@@ -126,6 +128,9 @@ Object.assign(process.env, {
   ELECTRON_MODE: 'true',
   NODE_ENV: isDev ? 'development' : 'production',
   FRONTEND_DIST: frontendDist,
+  // Echoed by /api/health so waitForBackend() knows the server answering on
+  // the port is ours and not another program already listening there.
+  GROWLANCE_INSTANCE_ID: crypto.randomUUID(),
   FREELANCER_REDIRECT_URI: `http://localhost:${PORT}/api/auth/freelancer/callback`,
   // Point Prisma to the query engine binary
   ...(queryEngineFile && { PRISMA_QUERY_ENGINE_LIBRARY: path.join(prismaClientPath, queryEngineFile) }),
@@ -233,7 +238,22 @@ function createActivationWindow() {
 // ─── License IPC ──────────────────────────────────────────────────────────────
 function registerLicenseIpc() {
   ipcMain.handle('license:activate', (_e, { key }) => license.activate(key))
-  ipcMain.handle('license:startTrial', () => license.startTrial())
+  ipcMain.handle('license:deviceNumber', () => license.getDeviceNumber())
+  // The key generator writes a small text file; let the user pick it instead
+  // of pasting a long key by hand.
+  ipcMain.handle('license:pickKeyFile', async () => {
+    const r = await dialog.showOpenDialog({
+      title: 'Choose your BidPilot key file',
+      filters: [{ name: 'BidPilot key', extensions: ['key', 'txt'] }, { name: 'All files', extensions: ['*'] }],
+      properties: ['openFile'],
+    })
+    if (r.canceled || !r.filePaths[0]) return { canceled: true }
+    try {
+      return { content: fs.readFileSync(r.filePaths[0], 'utf8').trim() }
+    } catch (err) {
+      return { error: err.message }
+    }
+  })
   ipcMain.handle('license:validate', () => license.validate())
   ipcMain.handle('license:deactivate', () => license.deactivate())
   ipcMain.handle('license:status', () => license.getStatus())
@@ -259,9 +279,9 @@ app.whenReady().then(async () => {
   } catch (err) {
     // A failed migration means every DB query after this would fail with
     // confusing errors — tell the user instead of limping on with a broken schema.
-    console.error('[Growlance] Migration error:', err.message)
+    console.error('[BidPilot] Migration error:', err.message)
     dialog.showErrorBox(
-      'Growlance could not update its database',
+      'BidPilot could not update its database',
       `${err.message}\n\nPlease restart the app. If the problem persists, contact support@growlance.app.`
     )
     app.quit()
@@ -274,7 +294,7 @@ app.whenReady().then(async () => {
   try {
     licensed = await license.isLicensed()
   } catch (err) {
-    console.warn('[Growlance] License check failed:', err.message)
+    console.warn('[BidPilot] License check failed:', err.message)
   }
 
   if (!licensed) {
@@ -288,7 +308,7 @@ app.whenReady().then(async () => {
   try {
     require('../backend/src/index.js')
   } catch (err) {
-    console.error('[Growlance] Backend error:', err.message, err.stack)
+    console.error('[BidPilot] Backend error:', err.message, err.stack)
   }
 
   // Wait for Express to be ready before opening the window
@@ -296,7 +316,7 @@ app.whenReady().then(async () => {
     createWindow()
   }).catch((err) => {
     dialog.showErrorBox(
-      'Growlance failed to start',
+      'BidPilot failed to start',
       `The backend service did not start in time.\n\n${err.message}\n\nPlease restart the app. If the problem persists, check that no other process is using port ${PORT}.`
     )
     app.quit()
@@ -330,14 +350,29 @@ app.on('window-all-closed', () => {
 })
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+// Resolves once OUR backend answers on the port. A 200 from a server that does
+// not echo this launch's instance id means something else (another copy of
+// the app, a dev server) already holds the port: our backend could not bind,
+// and opening the window would show the other server's pages instead.
 function waitForBackend(url, maxWaitMs = 10000) {
   const http = require('http')
   const start = Date.now()
+  const expected = process.env.GROWLANCE_INSTANCE_ID
   return new Promise((resolve, reject) => {
     function check() {
       http.get(url, (res) => {
-        if (res.statusCode === 200) return resolve()
-        retry()
+        let body = ''
+        res.on('data', (c) => { body += c })
+        res.on('end', () => {
+          if (res.statusCode !== 200) return retry()
+          let instance = null
+          try { instance = JSON.parse(body).instance } catch {}
+          if (instance === expected) return resolve()
+          reject(new Error(
+            `Port ${PORT} is already in use by another program (another copy of the app, or a development server). ` +
+            'Close it, then start the app again.'
+          ))
+        })
       }).on('error', retry)
     }
     function retry() {

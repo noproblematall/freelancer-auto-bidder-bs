@@ -124,12 +124,12 @@ async function handleCommand(botToken, chatId, text) {
     const status = scheduler.getStatus();
     if (status.running) {
       await sendTelegramMessage(botToken, chatId,
-        '⚡ Growlance is already running.'
+        '⚡ BidPilot is already running.'
       );
     } else {
       scheduler.start();
       await sendTelegramMessage(botToken, chatId,
-        '✅ <b>Growlance started!</b>\n\nThe scheduler is now active and will process your bidding profiles every minute.'
+        '✅ <b>BidPilot started!</b>\n\nThe scheduler is now active and will process your bidding profiles every minute.'
       );
     }
 
@@ -137,12 +137,12 @@ async function handleCommand(botToken, chatId, text) {
     const status = scheduler.getStatus();
     if (!status.running) {
       await sendTelegramMessage(botToken, chatId,
-        '⚡ Growlance is already stopped.'
+        '⚡ BidPilot is already stopped.'
       );
     } else {
       scheduler.stop();
       await sendTelegramMessage(botToken, chatId,
-        '🛑 <b>Growlance stopped!</b>\n\nNo new bids will be placed until you send /start.'
+        '🛑 <b>BidPilot stopped!</b>\n\nNo new bids will be placed until you send /start.'
       );
     }
 
@@ -153,12 +153,12 @@ async function handleCommand(botToken, chatId, text) {
       ? (processing ? 'Running <i>(currently placing bids)</i>' : 'Running')
       : 'Stopped';
     await sendTelegramMessage(botToken, chatId,
-      `${icon} <b>Growlance Status:</b> ${label}\n\nCommands: /start · /stop · /status`
+      `${icon} <b>BidPilot Status:</b> ${label}\n\nCommands: /start · /stop · /status`
     );
 
   } else if (command === '/help') {
     await sendTelegramMessage(botToken, chatId,
-      '🤖 <b>Growlance Bot Commands</b>\n\n' +
+      '🤖 <b>BidPilot Bot Commands</b>\n\n' +
       '/start — Enable bidding\n' +
       '/stop — Disable bidding\n' +
       '/status — Show current status'

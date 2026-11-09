@@ -1,6 +1,6 @@
 appId: com.growlance.app
-productName: Growlance
-copyright: Copyright © 2026 Growlance
+productName: BidPilot
+copyright: Copyright © 2026 BidPilot
 
 directories:
   output: dist/electron

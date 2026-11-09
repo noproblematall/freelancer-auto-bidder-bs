@@ -37,34 +37,34 @@ Automated bidding system for Freelancer.com powered by AI.
 
 ### Mac (Apple Silicon)
 
-1. Download `Growlance-x.x.x-arm64.dmg` from the [Releases](../../releases) page
-2. Open the DMG and drag **Growlance** to your Applications folder
+1. Download `BidPilot-x.x.x-arm64.dmg` from the [Releases](../../releases) page
+2. Open the DMG and drag **BidPilot** to your Applications folder
 3. Run the following command in Terminal:
    ```bash
-   xattr -cr /Applications/Growlance.app
+   xattr -cr /Applications/BidPilot.app
    ```
-4. Open Growlance from Applications or your Dock
+4. Open BidPilot from Applications or your Dock
 
 > **Why is step 3 needed?**
 > macOS Gatekeeper blocks apps downloaded from the internet that aren't signed with an Apple Developer certificate, showing a "damaged" error. The `xattr -cr` command removes the quarantine flag so the app can launch. This is safe — it only removes the download quarantine attribute and does not modify the app itself.
 
 ### Mac (Intel)
 
-Same steps as above, but download `Growlance-x.x.x-x64.dmg` instead.
+Same steps as above, but download `BidPilot-x.x.x-x64.dmg` instead.
 
 ### Windows
 
-1. Download `Growlance-Setup-x.x.x.exe` from the [Releases](../../releases) page
+1. Download `BidPilot-Setup-x.x.x.exe` from the [Releases](../../releases) page
 2. Run the installer
 3. If Windows SmartScreen shows an "Unknown publisher" warning, click **More info → Run anyway**
 
 ### Linux
 
-1. Download `Growlance-x.x.x.AppImage` from the [Releases](../../releases) page
+1. Download `BidPilot-x.x.x.AppImage` from the [Releases](../../releases) page
 2. Make it executable and run:
    ```bash
-   chmod +x Growlance-*.AppImage
-   ./Growlance-*.AppImage
+   chmod +x BidPilot-*.AppImage
+   ./BidPilot-*.AppImage
    ```
 
 ---

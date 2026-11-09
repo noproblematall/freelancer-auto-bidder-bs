@@ -1,0 +1,32 @@
+appId: com.bidpilot.keygen
+productName: BidPilot Keygen
+copyright: Copyright © 2026 BidPilot
+electronVersion: 33.4.11
+
+directories:
+  output: ../../dist/keygen
+  buildResources: build
+
+files:
+  - app/**
+  - package.json
+
+npmRebuild: false
+nodeGypRebuild: false
+
+# One-click installer: installs per user (no admin prompt), adds a desktop and
+# Start menu shortcut, and launches the app. More reliable than a "portable"
+# exe, which unpacks itself to a temp folder on every start and fails when
+# that folder is removed or scanned mid-launch (ffmpeg.dll not found).
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: BidPilot-Keygen-Setup.exe
+
+nsis:
+  oneClick: true
+  perMachine: false
+  createDesktopShortcut: true
+  runAfterFinish: true
+  deleteAppDataOnUninstall: false

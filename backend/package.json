@@ -1,7 +1,7 @@
 {
   "name": "growlance-backend",
   "version": "1.0.0",
-  "description": "Growlance backend API for Freelancer.com automatic bidding",
+  "description": "BidPilot backend API for Freelancer.com automatic bidding",
   "main": "src/index.js",
   "scripts": {
     "dev": "node --watch-path=src src/index.js",

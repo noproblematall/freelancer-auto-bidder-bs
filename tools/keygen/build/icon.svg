@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- BidPilot Keygen icon: the app lettermark with a key badge -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b2535"/>
+      <stop offset="1" stop-color="#0d131c"/>
+    </linearGradient>
+    <linearGradient id="mark" gradientUnits="userSpaceOnUse" x1="0" y1="236" x2="0" y2="788">
+      <stop offset="0" stop-color="#5eead4"/>
+      <stop offset="1" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1024" height="1024" rx="224" fill="url(#tile)"/>
+  <rect x="24" y="24" width="976" height="976" rx="204" fill="none" stroke="#ffffff" stroke-opacity="0.06" stroke-width="8"/>
+  <path fill="none" stroke="url(#mark)" stroke-width="128" stroke-linejoin="round" stroke-linecap="round"
+        d="M 300 788 V 236 H 520 A 136 136 0 0 1 520 508 H 300 M 300 508 H 560 A 140 140 0 0 1 560 788 H 300"/>
+  <!-- key badge -->
+  <circle cx="776" cy="776" r="200" fill="#10b981" stroke="#0d131c" stroke-width="28"/>
+  <g fill="none" stroke="#0d131c" stroke-width="44" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="704" cy="776" r="62"/>
+    <path d="M 766 776 H 896"/>
+    <path d="M 846 776 V 828"/>
+    <path d="M 896 776 V 840"/>
+  </g>
+</svg>

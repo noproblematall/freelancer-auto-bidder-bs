@@ -384,7 +384,7 @@ export default function DashboardPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
               </svg>
               <p className="text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Schedule Disabled</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Growlance runs 24/7</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">BidPilot runs 24/7</p>
               <button
                 onClick={() => navigate('/settings')}
                 className="text-xs font-medium text-navy-700 dark:text-navy-300 hover:text-navy-900 dark:hover:text-white flex items-center gap-1"

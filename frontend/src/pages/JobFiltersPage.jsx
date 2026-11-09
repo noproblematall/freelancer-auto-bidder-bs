@@ -107,7 +107,7 @@ export default function JobFiltersPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-navy-950 dark:text-white">Job Filters</h1>
         <p className="text-sm text-slate-700 dark:text-slate-200 mt-1">
-          Narrow which projects Growlance looks at. These filters apply to every bid profile's search.
+          Narrow which projects BidPilot looks at. These filters apply to every bid profile's search.
         </p>
       </div>
 

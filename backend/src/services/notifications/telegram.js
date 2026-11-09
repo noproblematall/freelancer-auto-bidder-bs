@@ -85,7 +85,7 @@ async function notifyBidError({ botToken, chatId, projectTitle, projectUrl, erro
 
 async function notifyEngineStalled({ botToken, chatId, errors, reason }) {
   const lines = [
-    '⚠️ <b>Growlance: Bid Engine Stalled</b>',
+    '⚠️ <b>BidPilot: Bid Engine Stalled</b>',
     '',
     `The bid engine ran but could not analyze any projects (${errors} error${errors !== 1 ? 's' : ''}).`,
     '',
@@ -106,7 +106,7 @@ async function notifyEngineStalled({ botToken, chatId, errors, reason }) {
 
 async function notifySchedulerPaused({ botToken, chatId, reason }) {
   const lines = [
-    '⚠️ <b>Growlance Paused</b>',
+    '⚠️ <b>BidPilot Paused</b>',
     '',
     'All bid profiles have been automatically deactivated because the account needs attention.',
     '',
