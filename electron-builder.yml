@@ -31,6 +31,11 @@ extraResources:
   # Default AI proposal prompt — loaded by promptLoader.js at runtime
   - from: ChatGPT-prompt.md
     to: ChatGPT-prompt.md
+  # Tray icon (electron/tray.js): Windows loads the .ico, Linux the .png
+  - from: build/icon.ico
+    to: icon.ico
+  - from: build/icon.png
+    to: icon.png
 
 # Native binaries cannot run from inside an asar archive
 asarUnpack:

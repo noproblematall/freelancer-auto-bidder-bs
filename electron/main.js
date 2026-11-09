@@ -5,6 +5,7 @@ const path = require('path')
 const fs = require('fs')
 const crypto = require('crypto')
 const license = require('./license')
+const { createTray, hideToTrayOnMinimize, showWindow, destroyTray } = require('./tray')
 
 // Set app name before any getPath() call so userData stays ~/Library/Application Support/Growlance
 // (%APPDATA%\Growlance on Windows). The product is now called BidPilot, but existing installs keep
@@ -185,6 +186,9 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => mainWindow.show())
 
+  // Minimize hides the window to the tray icon; closing it quits the app.
+  hideToTrayOnMinimize(mainWindow)
+
   // External links (Google Calendar, Freelancer profile pages, etc.) open in browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (!url.startsWith('http://localhost')) shell.openExternal(url)
@@ -314,6 +318,7 @@ app.whenReady().then(async () => {
   // Wait for Express to be ready before opening the window
   waitForBackend(`http://localhost:${PORT}/api/health`).then(() => {
     createWindow()
+    createTray(() => mainWindow)
   }).catch((err) => {
     dialog.showErrorBox(
       'BidPilot failed to start',
@@ -329,14 +334,13 @@ app.whenReady().then(async () => {
 
 // Focus existing window when a second instance is launched (single-instance lock)
 app.on('second-instance', () => {
-  if (mainWindow) {
-    if (mainWindow.isMinimized()) mainWindow.restore()
-    mainWindow.focus()
-  }
+  showWindow(mainWindow)
 })
 
 // Graceful shutdown — stop scheduler, pollers, and DB connection before Electron exits
 app.on('before-quit', () => {
+  // Remove the tray icon now; otherwise Windows keeps a dead icon until the mouse passes over it.
+  destroyTray()
   try { require('../backend/src/services/bidding/scheduler').stop() } catch (_) {}
   try { require('../backend/src/services/messaging/messagePoller').stopPoller() } catch (_) {}
   try { require('../backend/src/services/messaging/telegramCommandPoller').stopCommandPoller() } catch (_) {}
