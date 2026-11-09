@@ -10,7 +10,7 @@ const { createFreelancerClient } = require('../services/freelancer/client');
 const { getSelf } = require('../services/freelancer/users');
 const { isValidWebhookUrl } = require('../services/notifications/webhook');
 const logger = require('../utils/logger');
-const { defaultJobFiltersJson, defaultScheduleWeekJson, defaultFreelancerProfile, DEFAULT_HOURLY_RATE } = require('../../prisma/seed');
+const { defaultJobFiltersJson, defaultScheduleWeekJson, defaultFreelancerProfile, defaultBidProfiles, DEFAULT_HOURLY_RATE } = require('../../prisma/seed');
 const { resolveScheduleWeek, validateScheduleWeek, serializeScheduleWeek } = require('../services/bidding/scheduleWeek');
 const { loadDefaultPrompt } = require('../services/openai/promptLoader');
 
@@ -34,7 +34,7 @@ router.post('/register', async (req, res, next) => {
 
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await prisma.user.create({
-      data: { email, passwordHash, jobFilters: defaultJobFiltersJson(), scheduleWeek: defaultScheduleWeekJson(), scheduleEnabled: true, hourlyRate: DEFAULT_HOURLY_RATE, ...defaultFreelancerProfile() },
+      data: { email, passwordHash, jobFilters: defaultJobFiltersJson(), scheduleWeek: defaultScheduleWeekJson(), scheduleEnabled: true, hourlyRate: DEFAULT_HOURLY_RATE, ...defaultFreelancerProfile(), biddingProfiles: { create: defaultBidProfiles() } },
     });
 
     const token = jwt.sign({ userId: user.id }, env.jwtSecret, { expiresIn: '7d' });
@@ -66,7 +66,7 @@ router.post('/local-session', async (req, res, next) => {
       // and keeps /login unusable for this account by guessing.
       const passwordHash = await bcrypt.hash(require('crypto').randomBytes(32).toString('hex'), 12);
       user = await prisma.user.create({
-        data: { email: 'local@growlance.app', passwordHash, jobFilters: defaultJobFiltersJson(), scheduleWeek: defaultScheduleWeekJson(), scheduleEnabled: true, hourlyRate: DEFAULT_HOURLY_RATE, ...defaultFreelancerProfile() },
+        data: { email: 'local@growlance.app', passwordHash, jobFilters: defaultJobFiltersJson(), scheduleWeek: defaultScheduleWeekJson(), scheduleEnabled: true, hourlyRate: DEFAULT_HOURLY_RATE, ...defaultFreelancerProfile(), biddingProfiles: { create: defaultBidProfiles() } },
       });
       logger.info('Local user created for silent session');
     }

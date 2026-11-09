@@ -111,6 +111,25 @@ function defaultFreelancerProfile() {
   return { ...DEFAULT_FREELANCER_PROFILE };
 }
 
+// Bid profiles every new account starts with (bidding_profiles). All four run
+// the same open search; the proposal prompt gives each its own bid style.
+// They start switched off, so nothing is bid until the owner turns one on.
+// Accounts that existed before this, and had no profile, get the same four
+// from the 20261109000000_default_bid_profiles migration.
+const DEFAULT_BID_PROFILES = Object.freeze([
+  { name: 'Default', proposalPrompt: null },
+  { name: 'Showcase', proposalPrompt: 'Near the end, include two or three of the most relevant links from my portfolio, each on its own line.' },
+  { name: 'Questions', proposalPrompt: 'Before the closing line, ask two short questions about this brief that show I read it.' },
+  { name: 'Short', proposalPrompt: 'Keep the bid under 600 characters.' },
+]);
+
+// Rows for a nested create. The app lists profiles newest first, so the
+// timestamps step down to keep the order above.
+function defaultBidProfiles(now = Date.now()) {
+  const last = DEFAULT_BID_PROFILES.length - 1;
+  return DEFAULT_BID_PROFILES.map((profile, i) => ({ ...profile, createdAt: new Date(now + (last - i)) }));
+}
+
 // Idempotent: only accounts with no profile text at all are touched.
 async function seedFreelancerProfileDefaults(prisma) {
   const result = await prisma.user.updateMany({
@@ -182,5 +201,6 @@ module.exports = {
   DEFAULT_JOB_FILTERS, defaultJobFiltersJson, seedJobFilterDefaults,
   DEFAULT_SCHEDULE_WEEK, defaultScheduleWeekJson, seedScheduleDefaults,
   DEFAULT_FREELANCER_PROFILE, defaultFreelancerProfile, seedFreelancerProfileDefaults,
+  DEFAULT_BID_PROFILES, defaultBidProfiles,
   DEFAULT_HOURLY_RATE, seedHourlyRateDefault,
 };
