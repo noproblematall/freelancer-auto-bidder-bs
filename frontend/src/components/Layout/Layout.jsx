@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Header from './Header'
+import BackToTop from './BackToTop'
 
 export default function Layout() {
   return (
@@ -10,6 +11,7 @@ export default function Layout() {
       <main className="flex-1 ml-66 pt-16 p-8">
         <Outlet />
       </main>
+      <BackToTop />
     </div>
   )
 }

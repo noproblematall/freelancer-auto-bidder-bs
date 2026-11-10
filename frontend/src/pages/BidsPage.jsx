@@ -600,6 +600,18 @@ export default function BidsPage() {
                       <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full transition-colors duration-500 ${STATUS_COLORS[bid.status] || STATUS_COLORS.pending}`}>
                         {bid.status === 'pending_review' ? 'needs review' : bid.status}
                       </span>
+                      {bid.profile && (
+                        <Link
+                          to="/profiles"
+                          className="shrink-0 inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
+                          title={`Written with the "${bid.profile.name}" profile — open Bid Profiles`}
+                        >
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.1a7.5 7.5 0 0 1 15 0A17.9 17.9 0 0 1 12 21.75c-2.68 0-5.22-.58-7.5-1.65Z" />
+                          </svg>
+                          {bid.profile.name}
+                        </Link>
+                      )}
                       {bid.sealed && (
                         <span
                           className="shrink-0 inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
@@ -629,7 +641,6 @@ export default function BidsPage() {
                         ) : null
                       })()}
                       <span>{bid.periodDays} days</span>
-                      {bid.profile && <span className="text-navy-500 dark:text-emerald-400">via {bid.profile.name}</span>}
                       {bid.placedAt && <span>{timeAgo(bid.placedAt)}</span>}
                       {!bid.placedAt && bid.createdAt && <span>{timeAgo(bid.createdAt)}</span>}
                     </div>
