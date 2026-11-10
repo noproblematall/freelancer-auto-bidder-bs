@@ -1,6 +1,6 @@
 const cron = require('node-cron');
 const prisma = require('../../config/database');
-const { runProfilePipeline, FatalBidError } = require('./engine');
+const { runProfilePipeline, remainingBidBudget, FatalBidError } = require('./engine');
 const { notifySchedulerPaused, notifyEngineStalled } = require('../notifications/telegram');
 const { decrypt } = require('../../utils/tokenManager');
 const { checkGlobalSchedule } = require('./scheduleChecker');
@@ -11,6 +11,7 @@ let currentRunStartedAt = null; // when the run in progress began, for the idle 
 let cronJob = null;
 let shutdownHandlersRegistered = false;
 let lastStallAlertAt = 0; // throttle stall alerts to once per hour
+let runCounter = 0; // rotates which profile goes first, so the share-out is fair over time
 
 async function runAllActiveProfiles() {
   const runStartTime = new Date();
@@ -91,71 +92,97 @@ async function runAllActiveProfiles() {
       profilesByUser[profile.userId].push(profile);
     }
 
-    for (const profile of activeProfiles) {
-      const userProfiles = profilesByUser[profile.userId];
-      const profileIndex = userProfiles.indexOf(profile);
+    // The bid limits are per account, so a user's profiles share them. Each run
+    // every profile gets an equal share of what is left (unused share rolls on
+    // to the next profile), and the profile that goes first rotates run by run.
+    // Without this the first profile used the whole hourly limit every minute
+    // and the other active profiles almost never bid.
+    runCounter++;
+    for (const userProfiles of Object.values(profilesByUser)) {
       const totalProfiles = userProfiles.length;
+      const userId = userProfiles[0].userId;
+      let remaining = Infinity;
+      if (totalProfiles > 1) {
+        try {
+          remaining = (await remainingBidBudget(userId)).remaining;
+        } catch (e) {
+          logger.warn(`Scheduler: could not read bid budget for user ${userId}: ${e.message}`);
+        }
+      }
+      const first = totalProfiles > 1 ? runCounter % totalProfiles : 0;
+      if (totalProfiles > 1) {
+        logger.info(`Scheduler: user ${userId} has ${remaining} bid(s) left this run, shared by ${totalProfiles} profiles starting with "${userProfiles[first].name}"`);
+      }
 
-      try {
-        const results = await runProfilePipeline(profile, { profileIndex, totalProfiles });
-        logger.info(
-          `Scheduler: profile "${profile.name}" — searched=${results.searched}, ` +
-          `filtered=${results.filtered}, qualified=${results.qualified}, ` +
-          `placed=${results.placed}, queued=${results.queued}, errors=${results.errors}`
-        );
+      for (let n = 0; n < totalProfiles; n++) {
+        // profileIndex stays the profile's fixed position so the round-robin
+        // project assignment in the engine is stable across runs.
+        const profileIndex = (first + n) % totalProfiles;
+        const profile = userProfiles[profileIndex];
+        const maxBids = Number.isFinite(remaining) ? Math.ceil(remaining / (totalProfiles - n)) : Infinity;
 
-        // Accumulate totals
-        totalResults.searched += results.searched;
-        totalResults.filtered += results.filtered;
-        totalResults.analyzed += results.analyzed;
-        totalResults.qualified += results.qualified;
-        totalResults.placed += results.placed;
-        totalResults.queued += results.queued || 0;
-        totalResults.errors += results.errors;
-        if (results.openaiError && !totalResults.openaiError) totalResults.openaiError = results.openaiError;
-      } catch (err) {
-        if (err instanceof FatalBidError) {
-          logger.error(`Scheduler: FATAL — auto-pausing all profiles for user ${profile.userId}: ${err.message}`);
-          totalResults.errors += 1;
+        try {
+          const results = await runProfilePipeline(profile, { profileIndex, totalProfiles, maxBids });
+          if (Number.isFinite(remaining)) remaining = Math.max(0, remaining - results.placed - (results.queued || 0));
+          logger.info(
+            `Scheduler: profile "${profile.name}" — searched=${results.searched}, ` +
+            `filtered=${results.filtered}, qualified=${results.qualified}, ` +
+            `placed=${results.placed}, queued=${results.queued}, errors=${results.errors}`
+          );
 
-          // Deactivate all active profiles for this user
-          await prisma.biddingProfile.updateMany({
-            where: { userId: profile.userId, isActive: true },
-            data: { isActive: false },
-          }).catch(e => logger.error(`Failed to deactivate profiles: ${e.message}`));
+          // Accumulate totals
+          totalResults.searched += results.searched;
+          totalResults.filtered += results.filtered;
+          totalResults.analyzed += results.analyzed;
+          totalResults.qualified += results.qualified;
+          totalResults.placed += results.placed;
+          totalResults.queued += results.queued || 0;
+          totalResults.errors += results.errors;
+          if (results.openaiError && !totalResults.openaiError) totalResults.openaiError = results.openaiError;
+        } catch (err) {
+          if (err instanceof FatalBidError) {
+            logger.error(`Scheduler: FATAL — auto-pausing all profiles for user ${profile.userId}: ${err.message}`);
+            totalResults.errors += 1;
 
-          // Log to activity feed
-          await prisma.activityLog.create({
-            data: {
-              userId: profile.userId,
-              action: 'scheduler_auto_paused',
-              details: JSON.stringify({ reason: err.message, runId }),
-            },
-          }).catch(e => logger.error(`Failed to log auto-pause: ${e.message}`));
+            // Deactivate all active profiles for this user
+            await prisma.biddingProfile.updateMany({
+              where: { userId: profile.userId, isActive: true },
+              data: { isActive: false },
+            }).catch(e => logger.error(`Failed to deactivate profiles: ${e.message}`));
 
-          // Telegram alert if configured
-          try {
-            const user = await prisma.user.findUnique({
-              where: { id: profile.userId },
-              select: { telegramBidNotificationsEnabled: true, telegramBotToken: true, telegramChatId: true },
-            });
-            if (user?.telegramBidNotificationsEnabled && user.telegramBotToken && user.telegramChatId) {
-              const botToken = decrypt(user.telegramBotToken);
-              const chatIds = user.telegramChatId.split(',').map(s => s.trim()).filter(Boolean);
-              for (const chatId of chatIds) {
-                notifySchedulerPaused({ botToken, chatId, reason: err.message })
-                  .catch(e => logger.warn(`Telegram pause notification failed: ${e.message}`));
+            // Log to activity feed
+            await prisma.activityLog.create({
+              data: {
+                userId: profile.userId,
+                action: 'scheduler_auto_paused',
+                details: JSON.stringify({ reason: err.message, runId }),
+              },
+            }).catch(e => logger.error(`Failed to log auto-pause: ${e.message}`));
+
+            // Telegram alert if configured
+            try {
+              const user = await prisma.user.findUnique({
+                where: { id: profile.userId },
+                select: { telegramBidNotificationsEnabled: true, telegramBotToken: true, telegramChatId: true },
+              });
+              if (user?.telegramBidNotificationsEnabled && user.telegramBotToken && user.telegramChatId) {
+                const botToken = decrypt(user.telegramBotToken);
+                const chatIds = user.telegramChatId.split(',').map(s => s.trim()).filter(Boolean);
+                for (const chatId of chatIds) {
+                  notifySchedulerPaused({ botToken, chatId, reason: err.message })
+                    .catch(e => logger.warn(`Telegram pause notification failed: ${e.message}`));
+                }
               }
+            } catch (tgErr) {
+              logger.warn(`Could not send Telegram pause alert: ${tgErr.message}`);
             }
-          } catch (tgErr) {
-            logger.warn(`Could not send Telegram pause alert: ${tgErr.message}`);
+
+            break; // Stop processing further profiles
           }
 
-          break; // Stop processing further profiles
+          logger.error(`Scheduler: profile "${profile.name}" failed: ${err.message}`);
+          totalResults.errors += 1;
         }
-
-        logger.error(`Scheduler: profile "${profile.name}" failed: ${err.message}`);
-        totalResults.errors += 1;
       }
     }
 

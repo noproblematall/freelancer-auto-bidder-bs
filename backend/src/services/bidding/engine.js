@@ -48,30 +48,23 @@ async function logProblemOnce(userId, action, message, windowMs = 6 * 60 * 60 * 
   }
 }
 
-async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1 } = {}) {
-  const results = { searched: 0, filtered: 0, analyzed: 0, qualified: 0, placed: 0, queued: 0, errors: 0, openaiError: null };
-
-  // Fold the account's job filters, review mode and AI context into this
-  // profile so every step below sees the effective values.
-  profile = await applyAccountSettings(profile, profile.userId);
-
-  // Step 1: Rate limit check — the caps are account-wide (Settings → Auto-Bidding)
-  // and count bids from EVERY profile, so several active profiles share them.
+// How many more bids the account may make right now. The caps are account-wide
+// (Settings → Auto-Bidding) and count bids from EVERY profile; drafts queued for
+// review count too, otherwise a review-mode profile on the 1-minute cron would
+// flood the queue (cap per RUN, not per window).
+async function remainingBidBudget(userId) {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
   const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const caps = await prisma.user.findUnique({
-    where: { id: profile.userId },
+    where: { id: userId },
     select: { maxBidsPerHour: true, maxBidsPerDay: true },
   });
   const maxBidsPerHour = caps?.maxBidsPerHour ?? 8;
   const maxBidsPerDay = caps?.maxBidsPerDay ?? 80;
-
-  // Queued review drafts count against the caps too — otherwise a review-mode
-  // profile on the 1-minute cron floods the queue (cap per RUN, not per window).
   const [bidsThisHour, bidsLast24h] = await Promise.all([
     prisma.bid.count({
       where: {
-        userId: profile.userId,
+        userId,
         OR: [
           { status: 'placed', placedAt: { gte: oneHourAgo } },
           { status: 'pending_review', createdAt: { gte: oneHourAgo } },
@@ -80,7 +73,7 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
     }),
     prisma.bid.count({
       where: {
-        userId: profile.userId,
+        userId,
         OR: [
           { status: 'placed', placedAt: { gte: last24Hours } },
           { status: 'pending_review', createdAt: { gte: last24Hours } },
@@ -88,6 +81,23 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
       },
     }),
   ]);
+  const remaining = Math.max(0, Math.min(maxBidsPerHour - bidsThisHour, maxBidsPerDay - bidsLast24h));
+  return { remaining, bidsThisHour, maxBidsPerHour, bidsLast24h, maxBidsPerDay };
+}
+
+// `maxBids` is this profile's share of the account budget for the run (set by
+// the scheduler when several profiles are active). Without it the profile may
+// use everything that is left.
+async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1, maxBids = Infinity } = {}) {
+  const results = { searched: 0, filtered: 0, analyzed: 0, qualified: 0, placed: 0, queued: 0, errors: 0, openaiError: null };
+
+  // Fold the account's job filters, review mode and AI context into this
+  // profile so every step below sees the effective values.
+  profile = await applyAccountSettings(profile, profile.userId);
+
+  // Step 1: Rate limit check — the caps are account-wide (Settings → Auto-Bidding)
+  // and count bids from EVERY profile, so several active profiles share them.
+  const { bidsThisHour, maxBidsPerHour, bidsLast24h, maxBidsPerDay } = await remainingBidBudget(profile.userId);
 
   // Check if already at limits
   if (bidsThisHour >= maxBidsPerHour) {
@@ -106,9 +116,13 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
   // Calculate max bids allowed in this run (most restrictive of hourly/daily limits)
   const remainingThisHour = maxBidsPerHour - bidsThisHour;
   const remainingToday = maxBidsPerDay - bidsLast24h;
-  const maxBidsThisRun = Math.min(remainingThisHour, remainingToday);
+  const maxBidsThisRun = Math.min(remainingThisHour, remainingToday, maxBids);
 
-  logger.info(`Profile "${profile.name}" account rate limits: ${bidsThisHour}/${maxBidsPerHour} this hour, ${bidsLast24h}/${maxBidsPerDay} last 24h, max this run: ${maxBidsThisRun}`);
+  logger.info(`Profile "${profile.name}" account rate limits: ${bidsThisHour}/${maxBidsPerHour} this hour, ${bidsLast24h}/${maxBidsPerDay} last 24h, max this run: ${maxBidsThisRun}${Number.isFinite(maxBids) ? ` (share ${maxBids})` : ''}`);
+  if (maxBidsThisRun <= 0) {
+    logger.info(`Profile "${profile.name}": no bid budget left in this run, skipping`);
+    return results;
+  }
 
   // Step 2: Get clients
   const tokenRecord = await prisma.freelancerToken.findUnique({ where: { userId: profile.userId } });
@@ -877,4 +891,4 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
   return results;
 }
 
-module.exports = { runProfilePipeline, FatalBidError };
+module.exports = { runProfilePipeline, remainingBidBudget, FatalBidError };
