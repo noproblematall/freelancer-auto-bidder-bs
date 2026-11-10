@@ -1,6 +1,6 @@
 {
   "name": "growlance",
-  "version": "1.4.8",
+  "version": "1.4.9",
   "private": true,
   "description": "BidPilot — Freelance automation tool",
   "main": "electron/main.js",

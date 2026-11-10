@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
 
 const ConfirmContext = createContext(null)
 
@@ -38,11 +38,30 @@ export function ConfirmProvider({ children }) {
     []
   )
 
+  // Keyboard: Enter confirms, Escape cancels. The confirm button takes focus
+  // when the dialog opens so Enter and Space work on it natively as well.
+  const confirmButtonRef = useRef(null)
+  useEffect(() => {
+    if (!state.isOpen) return
+    confirmButtonRef.current?.focus()
+    const onKeyDown = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        state.onConfirm?.()
+      } else if (e.key === 'Escape') {
+        e.preventDefault()
+        state.onCancel?.()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [state.isOpen, state.onConfirm, state.onCancel])
+
   return (
     <ConfirmContext.Provider value={{ confirm }}>
       {children}
       {state.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
           {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
@@ -52,13 +71,16 @@ export function ConfirmProvider({ children }) {
           {/* Dialog */}
           <div className="relative bg-white dark:bg-navy-900 rounded-xl shadow-2xl border border-slate-200 dark:border-white/8 max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-200">
             {/* Title */}
-            <h3 className="text-lg font-semibold text-navy-950 dark:text-white mb-2">
+            <h3 id="confirm-dialog-title" className="text-lg font-semibold text-navy-950 dark:text-white mb-2">
               {state.title}
             </h3>
 
             {/* Message */}
-            <p className="text-sm text-slate-700 dark:text-slate-200 mb-6">
+            <p className="text-sm text-slate-700 dark:text-slate-200 mb-1">
               {state.message}
+            </p>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mb-6">
+              Press <kbd className="px-1 py-0.5 rounded border border-slate-300 dark:border-white/15 font-mono text-[10px]">Enter</kbd> to confirm, <kbd className="px-1 py-0.5 rounded border border-slate-300 dark:border-white/15 font-mono text-[10px]">Esc</kbd> to cancel
             </p>
 
             {/* Actions */}
@@ -70,11 +92,13 @@ export function ConfirmProvider({ children }) {
                 {state.cancelText}
               </button>
               <button
+                ref={confirmButtonRef}
                 onClick={state.onConfirm}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                title="Enter"
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-navy-900 ${
                   state.variant === 'danger'
-                    ? 'bg-red-600 hover:bg-red-700 text-white'
-                    : 'bg-navy-900 dark:bg-emerald-400 hover:bg-navy-800 dark:hover:bg-emerald-500 text-white dark:text-navy-950'
+                    ? 'bg-red-600 hover:bg-red-700 text-white focus-visible:ring-red-400'
+                    : 'bg-navy-900 dark:bg-emerald-400 hover:bg-navy-800 dark:hover:bg-emerald-500 text-white dark:text-navy-950 focus-visible:ring-emerald-400'
                 }`}
               >
                 {state.confirmText}
