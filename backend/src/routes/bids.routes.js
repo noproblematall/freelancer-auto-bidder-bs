@@ -5,6 +5,8 @@ const flClient = require('../middleware/freelancerClient');
 const { placeBid, retractBid, MILESTONE_PERCENTAGE } = require('../services/freelancer/bids');
 const logger = require('../utils/logger');
 const { explainIdle } = require('../services/bidding/idleReport');
+const { getBidQuota, noteBidPlaced, markBidsExhausted, isOutOfBidsError } = require('../services/freelancer/bidQuota');
+const { decrypt } = require('../utils/tokenManager');
 
 const router = express.Router();
 
@@ -25,6 +27,22 @@ const BID_PROJECT_INCLUDE = {
 router.get('/idle', async (req, res, next) => {
   try {
     res.json(await explainIdle(req.userId));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/bids/quota — Bids left on the Freelancer account (must be before /:id).
+// { remaining, limit, membership, fetchedAt }; remaining is null when Freelancer
+// does not report it. ?refresh=1 bypasses the 10-minute cache.
+router.get('/quota', async (req, res, next) => {
+  try {
+    const tokenRecord = await prisma.freelancerToken.findUnique({ where: { userId: req.userId } });
+    if (!tokenRecord) return res.json({ connected: false, remaining: null, limit: null });
+    const { createFreelancerClient } = require('../services/freelancer/client');
+    const client = createFreelancerClient(decrypt(tokenRecord.accessToken));
+    const q = await getBidQuota(req.userId, client, { force: req.query.refresh === '1' });
+    res.json({ connected: true, remaining: q?.remaining ?? null, limit: q?.limit ?? null, membership: q?.membership ?? null, fetchedAt: q?.fetchedAt ?? null, exhaustedUntil: q?.exhaustedUntil ?? null, error: q?.error ?? null });
   } catch (err) {
     next(err);
   }
@@ -573,6 +591,7 @@ router.post('/:id/place-now', flClient, async (req, res, next) => {
         },
       }).catch(() => {});
 
+      noteBidPlaced(req.userId);
       logger.info(`Bid #${bid.id} force-placed by user`);
       res.json({ bid: updatedBid, message: 'Bid placed successfully' });
     } catch (placementError) {
@@ -588,6 +607,7 @@ router.post('/:id/place-now', flClient, async (req, res, next) => {
         logger.info(`Bid #${bid.id} place-now hit "already bid" — recovered as placed`);
         return res.json({ bid: recovered, message: 'Bid was already placed on Freelancer — recovered successfully' });
       }
+      if (isOutOfBidsError(errorMessage)) markBidsExhausted(req.userId, errorMessage);
       const updatedBid = await prisma.bid.update({
         where: { id: bid.id },
         data: { status: 'error', errorMessage },

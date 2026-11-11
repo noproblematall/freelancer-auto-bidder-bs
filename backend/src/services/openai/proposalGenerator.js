@@ -29,9 +29,26 @@ PROJECT:
     if (profile.portfolioHighlights) prompt += `\n- Portfolio (sample sites by skill):\n${profile.portfolioHighlights}`;
   }
 
-  prompt += `\n\nIMPORTANT: The bid MUST be under ${MAX_CHARS} characters total. Be concise.`;
+  prompt += `\n\nIMPORTANT: The bid MUST be under ${MAX_CHARS} characters total. Be concise. If you ask the client questions, put each question on its own line.`;
 
   return prompt;
+}
+
+// Puts each question on its own line. Models often run two or three questions
+// together in one paragraph ("What sources do you want? Should it go by
+// email?"), which reads badly in a bid. Only lines holding two or more
+// questions are split, so a lone "Interested? Let me know." is left alone.
+function separateQuestions(text) {
+  return text
+    .split('\n')
+    .map(line => {
+      const questions = (line.match(/\?/g) || []).length;
+      if (questions < 2) return line;
+      // Break after a question mark (plus any closing quote/bracket) that is
+      // followed by a space and the start of the next sentence.
+      return line.replace(/\?(["')\]]*)\s+(?=\S)/g, '?$1\n');
+    })
+    .join('\n');
 }
 
 async function generateProposal(openaiClient, project, profile) {
@@ -60,6 +77,8 @@ async function generateProposal(openaiClient, project, profile) {
     logger.info(`Project #${project.id}: prompt rules say not to bid (${reason})`);
     return { skipped: true, reason, proposalText: '', charCount: 0 };
   }
+
+  proposalText = separateQuestions(proposalText);
 
   // If bot filter detected, prepend the required phrase
   if (botFilter.hasFilter && botFilter.requiredPhrase) {
@@ -92,7 +111,7 @@ async function generateProposal(openaiClient, project, profile) {
       max_tokens: 800,
     });
 
-    proposalText = retryContent.trim();
+    proposalText = separateQuestions(retryContent.trim());
 
     // Re-apply bot filter if needed
     if (botFilter.hasFilter && botFilter.requiredPhrase) {
@@ -126,4 +145,4 @@ async function generateProposal(openaiClient, project, profile) {
   };
 }
 
-module.exports = { generateProposal };
+module.exports = { generateProposal, separateQuestions };

@@ -76,11 +76,8 @@ export function ConfirmProvider({ children }) {
             </h3>
 
             {/* Message */}
-            <p className="text-sm text-slate-700 dark:text-slate-200 mb-1">
+            <p className="text-sm text-slate-700 dark:text-slate-200 mb-6">
               {state.message}
-            </p>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mb-6">
-              Press <kbd className="px-1 py-0.5 rounded border border-slate-300 dark:border-white/15 font-mono text-[10px]">Enter</kbd> to confirm, <kbd className="px-1 py-0.5 rounded border border-slate-300 dark:border-white/15 font-mono text-[10px]">Esc</kbd> to cancel
             </p>
 
             {/* Actions */}

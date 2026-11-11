@@ -40,6 +40,12 @@ export async function placeNowBid(id) {
   return data
 }
 
+// Bids left on the Freelancer account ({ remaining, limit }; remaining null = unknown)
+export async function getBidQuota(refresh = false) {
+  const { data } = await api.get('/bids/quota', { params: refresh ? { refresh: 1 } : {} })
+  return data
+}
+
 // Why nothing has been bid in the last two hours (idle:false when something was)
 export async function getIdleReport() {
   const { data } = await api.get('/bids/idle')

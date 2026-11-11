@@ -45,7 +45,7 @@ router.get('/activity', async (req, res, next) => {
       where: {
         userId: req.userId,
         action: {
-          in: ['scheduler_check', 'scheduler_run_completed', 'scheduler_run_failed', 'scheduler_auto_paused', 'openai_stall_detected', 'openai_not_configured', 'token_refresh_failed', 'freelancer_not_connected', 'project_search_failed', 'bid_cap_reached'],
+          in: ['scheduler_check', 'scheduler_run_completed', 'scheduler_run_failed', 'scheduler_auto_paused', 'openai_stall_detected', 'openai_not_configured', 'token_refresh_failed', 'freelancer_not_connected', 'project_search_failed', 'bid_cap_reached', 'freelancer_bids_exhausted'],
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -67,7 +67,7 @@ router.get('/activity', async (req, res, next) => {
         where: {
           userId: req.userId,
           action: {
-            in: ['scheduler_check', 'scheduler_run_completed', 'scheduler_run_failed', 'scheduler_auto_paused', 'openai_stall_detected', 'openai_not_configured', 'token_refresh_failed', 'freelancer_not_connected', 'project_search_failed', 'bid_cap_reached'],
+            in: ['scheduler_check', 'scheduler_run_completed', 'scheduler_run_failed', 'scheduler_auto_paused', 'openai_stall_detected', 'openai_not_configured', 'token_refresh_failed', 'freelancer_not_connected', 'project_search_failed', 'bid_cap_reached', 'freelancer_bids_exhausted'],
           },
         },
       }),

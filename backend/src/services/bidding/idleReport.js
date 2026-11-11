@@ -8,6 +8,7 @@ const prisma = require('../../config/database');
 const { isExpired } = require('../../utils/tokenManager');
 const { checkGlobalSchedule } = require('./scheduleChecker');
 const scheduler = require('./scheduler');
+const { getCachedBidQuota } = require('../freelancer/bidQuota');
 
 const IDLE_WINDOW_MS = 2 * 60 * 60 * 1000;
 
@@ -24,6 +25,7 @@ const PROBLEM_ACTIONS = {
   freelancer_not_connected: 'Freelancer is not connected',
   project_search_failed: 'The project search failed',
   bid_cap_reached: 'A bid limit was reached',
+  freelancer_bids_exhausted: 'Your Freelancer account has no bids left',
 };
 
 function parse(details) {
@@ -65,6 +67,8 @@ async function explainIdle(userId, { now = Date.now(), windowMs = IDLE_WINDOW_MS
   if (activeProfiles.length === 0) add('no_profile', 'No bid profile is switched on', 'Switch one on under Bid Profiles. Nothing is searched or bid without an active profile.');
   if (!token) add('freelancer', 'Freelancer is not connected', 'Connect your Freelancer account under Settings → Freelancer.com.');
   else if (isExpired(token.expiresAt) && !token.refreshToken) add('freelancer', 'The Freelancer connection has expired', 'Reconnect under Settings → Freelancer.com.');
+  const quota = getCachedBidQuota(userId);
+  if (quota && quota.remaining === 0) add('freelancer_bids_exhausted', 'Your Freelancer account has no bids left', `The membership allowance${quota.limit !== null ? ` of ${quota.limit}` : ''} is used up. Bids refill over time, or upgrade the membership on Freelancer.com. Nothing is sent to OpenAI meanwhile.`);
   if (!user?.openaiApiKey) add('openai', 'No OpenAI API key is set', 'Add your key under Settings → OpenAI. Projects cannot be scored or written without it.');
 
   const schedule = await checkGlobalSchedule();

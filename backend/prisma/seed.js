@@ -119,7 +119,7 @@ function defaultFreelancerProfile() {
 const DEFAULT_BID_PROFILES = Object.freeze([
   { name: 'Default', proposalPrompt: null },
   { name: 'Showcase', proposalPrompt: 'Near the end, include two or three of the most relevant links from my portfolio, each on its own line.' },
-  { name: 'Questions', proposalPrompt: 'Before the closing line, ask two short questions about this brief that show I read it.' },
+  { name: 'Questions', proposalPrompt: 'Before the closing line, ask two short questions about this brief that show I read it. Put each question on its own line.' },
   { name: 'Short', proposalPrompt: 'Keep the bid under 600 characters.' },
 ]);
 

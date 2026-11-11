@@ -4,6 +4,7 @@ const { createFreelancerClient } = require('../freelancer/client');
 const { refreshAccessToken } = require('../freelancer/auth');
 const { searchProjects } = require('../freelancer/projects');
 const { placeBid, sealBid, getBidById, MILESTONE_PERCENTAGE } = require('../freelancer/bids');
+const { getBidQuota, markBidsExhausted, noteBidPlaced, isOutOfBidsError } = require('../freelancer/bidQuota');
 const { notifyBidPlaced, notifyBidError } = require('../notifications/telegram');
 const { createOpenAIClient } = require('../openai/client');
 const { analyzeProject } = require('../openai/analyzer');
@@ -116,7 +117,7 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
   // Calculate max bids allowed in this run (most restrictive of hourly/daily limits)
   const remainingThisHour = maxBidsPerHour - bidsThisHour;
   const remainingToday = maxBidsPerDay - bidsLast24h;
-  const maxBidsThisRun = Math.min(remainingThisHour, remainingToday, maxBids);
+  let maxBidsThisRun = Math.min(remainingThisHour, remainingToday, maxBids);
 
   logger.info(`Profile "${profile.name}" account rate limits: ${bidsThisHour}/${maxBidsPerHour} this hour, ${bidsLast24h}/${maxBidsPerDay} last 24h, max this run: ${maxBidsThisRun}${Number.isFinite(maxBids) ? ` (share ${maxBids})` : ''}`);
   if (maxBidsThisRun <= 0) {
@@ -213,6 +214,20 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
   }
 
   const flClient = createFreelancerClient(plainAccessToken);
+
+  // Step 2b: Freelancer's own bid allowance. With none left every bid would be
+  // rejected, so stop here — before any project is sent to OpenAI.
+  const quota = await getBidQuota(profile.userId, flClient);
+  if (quota && quota.remaining === 0) {
+    logger.warn(`Profile "${profile.name}": the Freelancer account has no bids left${quota.limit !== null ? ` (allowance ${quota.limit})` : ''}`);
+    await logProblemOnce(profile.userId, 'freelancer_bids_exhausted',
+      `Your Freelancer account has no bids left${quota.limit !== null ? ` (membership allowance ${quota.limit})` : ''}. Nothing is sent to OpenAI until bids refill or you upgrade the membership; bidding resumes by itself.`, 60 * 60 * 1000);
+    return results;
+  }
+  if (quota && typeof quota.remaining === 'number' && quota.remaining < maxBidsThisRun) {
+    logger.info(`Profile "${profile.name}": only ${quota.remaining} Freelancer bid(s) left, capping this run`);
+    maxBidsThisRun = quota.remaining;
+  }
 
   if (!user?.openaiApiKey) {
     logger.warn(`No OpenAI API key for user ${profile.userId}`);
@@ -761,6 +776,7 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
           description: proposalText,
           sealed: !!user?.sealBids,
         });
+        noteBidPlaced(profile.userId);
 
         let sealedActual = !!flResult?.sealed;
 
@@ -835,6 +851,14 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
           where: { id: bidRecord.id },
           data: { status: 'error', errorMessage: placeErr.message },
         });
+        // Freelancer refused because the account's bid allowance is used up:
+        // remember that for an hour and stop this run before more OpenAI calls.
+        const outOfBids = isOutOfBidsError(placeErr.message);
+        if (outOfBids) {
+          markBidsExhausted(profile.userId, placeErr.message);
+          await logProblemOnce(profile.userId, 'freelancer_bids_exhausted',
+            `Freelancer rejected a bid because the account has no bids left ("${placeErr.message}"). Nothing is sent to OpenAI for an hour; bidding resumes by itself.`, 60 * 60 * 1000);
+        }
 
         await prisma.activityLog.create({
           data: {
@@ -870,6 +894,7 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
         if (FATAL_ERROR_PATTERNS.some(p => normalized.includes(p))) {
           throw new FatalBidError(placeErr.message);
         }
+        if (outOfBids) break;
       }
     } catch (err) {
       // FatalBidError must propagate so the scheduler can pause.
