@@ -5,7 +5,7 @@ const flClient = require('../middleware/freelancerClient');
 const { placeBid, retractBid, MILESTONE_PERCENTAGE } = require('../services/freelancer/bids');
 const logger = require('../utils/logger');
 const { explainIdle } = require('../services/bidding/idleReport');
-const { getBidQuota, noteBidPlaced, markBidsExhausted, isOutOfBidsError } = require('../services/freelancer/bidQuota');
+const { getBidQuota, noteBidPlaced, markBidsExhausted, isOutOfBidsError, restoreExhaustedFromDb } = require('../services/freelancer/bidQuota');
 const { decrypt } = require('../utils/tokenManager');
 
 const router = express.Router();
@@ -41,8 +41,19 @@ router.get('/quota', async (req, res, next) => {
     if (!tokenRecord) return res.json({ connected: false, remaining: null, limit: null });
     const { createFreelancerClient } = require('../services/freelancer/client');
     const client = createFreelancerClient(decrypt(tokenRecord.accessToken));
+    await restoreExhaustedFromDb(req.userId, prisma);
     const q = await getBidQuota(req.userId, client, { force: req.query.refresh === '1' });
-    res.json({ connected: true, remaining: q?.remaining ?? null, limit: q?.limit ?? null, membership: q?.membership ?? null, fetchedAt: q?.fetchedAt ?? null, exhaustedUntil: q?.exhaustedUntil ?? null, error: q?.error ?? null });
+    res.json({
+      connected: true,
+      remaining: q?.remaining ?? null,
+      limit: q?.limit ?? null,
+      membership: q?.membership ?? null,
+      fetchedAt: q?.fetchedAt ?? null,
+      exhaustedUntil: q?.exhaustedUntil ?? null,
+      lastRejection: q?.lastRejection ?? null,
+      keys: q?.keys ?? [],   // bid-related fields Freelancer returned, for diagnosing an unknown count
+      error: q?.error ?? null,
+    });
   } catch (err) {
     next(err);
   }
@@ -706,22 +717,33 @@ router.post('/:id/retry', flClient, async (req, res, next) => {
     // Attempt to place the bid again
     // COST OPTIMIZATION: Reuse existing proposal (bid.proposalText) instead of regenerating
     // This avoids calling OpenAI API again, saving costs on retry attempts
+    // Freelancer rejects amounts under the client's listed minimum, so a bid
+    // that failed for that reason is lifted to the minimum before the retry.
+    let amount = bid.amount;
+    const minBudget = bid.project.budgetMin;
+    if (typeof minBudget === 'number' && minBudget > 0 && amount < minBudget) {
+      amount = minBudget;
+      logger.info(`Bid #${bid.id}: amount ${bid.amount} raised to the client minimum ${minBudget} for the retry`);
+    }
+
     try {
       const flResult = await placeBid(req.flClient, {
         projectId: bid.project.freelancerProjectId,
         bidderId: parseInt(tokenRecord.freelancerUid),
-        amount: bid.amount,
+        amount,
         period: bid.periodDays,
         milestonePercentage: bid.milestonePercentage,
         description: bid.proposalText, // Reuses existing proposal from DB
         sealed: !!userRow?.sealBids,
       });
+      noteBidPlaced(req.userId);
 
       // Update bid with success
       const updatedBid = await prisma.bid.update({
         where: { id: bid.id },
         data: {
           status: 'placed',
+          amount,
           freelancerBidId: flResult.id,
           placedAt: new Date(),
         },
@@ -745,6 +767,7 @@ router.post('/:id/retry', flClient, async (req, res, next) => {
     } catch (placementError) {
       // Update bid with new error
       const errorMessage = placementError.response?.data?.message || placementError.message || 'Failed to place bid';
+      if (isOutOfBidsError(errorMessage)) markBidsExhausted(req.userId, errorMessage);
 
       const updatedBid = await prisma.bid.update({
         where: { id: bid.id },

@@ -41,7 +41,7 @@ const QUOTA_POLL_EVERY = 6 // quota is refreshed every 6th status poll (1 minute
 // Freelancer bids left on the account, shown next to the engine status.
 function BidQuotaPill({ quota, onRefresh }) {
   if (!quota || !quota.connected) return null
-  const { remaining, limit } = quota
+  const { remaining, limit, exhaustedUntil, lastRejection, keys } = quota
   const unknown = remaining === null || remaining === undefined
   const empty = !unknown && remaining <= 0
   const low = !unknown && !empty && remaining <= 5
@@ -50,10 +50,11 @@ function BidQuotaPill({ quota, onRefresh }) {
     : low
       ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-700'
       : 'bg-slate-50 dark:bg-navy-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-white/8'
+  const nextTry = exhaustedUntil ? ` Next try at ${new Date(exhaustedUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.` : ''
   const title = empty
-    ? 'Your Freelancer account has no bids left. Bidding is paused and nothing is sent to OpenAI until bids refill or you upgrade the membership.'
+    ? `Your Freelancer account has no bids left${lastRejection ? ` (Freelancer said: "${lastRejection}")` : ''}. Bidding is paused and nothing is sent to OpenAI until bids refill or you upgrade the membership.${nextTry}`
     : unknown
-      ? 'Freelancer did not report how many bids are left on the account. Click to re-check.'
+      ? `Freelancer did not report how many bids are left on the account, so bidding stops after the first "no bids left" rejection instead. Click to re-check.${keys && keys.length ? `\n\nBid-related fields Freelancer returned: ${keys.join(', ')}` : ''}`
       : `Bids left on your Freelancer account${limit !== null && limit !== undefined ? ` (membership allowance ${limit})` : ''}. Click to re-check.`
   return (
     <button

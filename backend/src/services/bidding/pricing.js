@@ -89,6 +89,11 @@ async function hourlyRate(project, profile, analysis) {
 
   if (strategy === 'my_rate' && positive(profile.hourlyRate)) {
     const conv = await usdToProject(profile.hourlyRate, currency, { hourly: true });
+    // Freelancer rejects a rate below the client's listed minimum ("Bids for
+    // this project can not be less than $40 USD"), so never bid under it.
+    if (positive(project.budgetMin) && conv.amount < project.budgetMin) {
+      return { amount: project.budgetMin, how: `my rate${conv.note} raised to client minimum ${project.budgetMin}` };
+    }
     return { amount: conv.amount, how: `my rate${conv.note}` };
   }
 

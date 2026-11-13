@@ -4,7 +4,7 @@ const { createFreelancerClient } = require('../freelancer/client');
 const { refreshAccessToken } = require('../freelancer/auth');
 const { searchProjects } = require('../freelancer/projects');
 const { placeBid, sealBid, getBidById, MILESTONE_PERCENTAGE } = require('../freelancer/bids');
-const { getBidQuota, markBidsExhausted, noteBidPlaced, isOutOfBidsError } = require('../freelancer/bidQuota');
+const { getBidQuota, markBidsExhausted, noteBidPlaced, isOutOfBidsError, restoreExhaustedFromDb } = require('../freelancer/bidQuota');
 const { notifyBidPlaced, notifyBidError } = require('../notifications/telegram');
 const { createOpenAIClient } = require('../openai/client');
 const { analyzeProject } = require('../openai/analyzer');
@@ -217,11 +217,14 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
 
   // Step 2b: Freelancer's own bid allowance. With none left every bid would be
   // rejected, so stop here — before any project is sent to OpenAI.
+  // A "no bids left" rejection recorded before an app restart still counts.
+  await restoreExhaustedFromDb(profile.userId, prisma);
   const quota = await getBidQuota(profile.userId, flClient);
   if (quota && quota.remaining === 0) {
-    logger.warn(`Profile "${profile.name}": the Freelancer account has no bids left${quota.limit !== null ? ` (allowance ${quota.limit})` : ''}`);
+    const until = quota.exhaustedUntil ? ` Next try at ${new Date(quota.exhaustedUntil).toLocaleTimeString()}.` : '';
+    logger.warn(`Profile "${profile.name}": the Freelancer account has no bids left${quota.limit !== null ? ` (allowance ${quota.limit})` : ''}${until}`);
     await logProblemOnce(profile.userId, 'freelancer_bids_exhausted',
-      `Your Freelancer account has no bids left${quota.limit !== null ? ` (membership allowance ${quota.limit})` : ''}. Nothing is sent to OpenAI until bids refill or you upgrade the membership; bidding resumes by itself.`, 60 * 60 * 1000);
+      `Your Freelancer account has no bids left${quota.limit !== null ? ` (membership allowance ${quota.limit})` : ''}. Nothing is sent to OpenAI until bids refill or you upgrade the membership; bidding resumes by itself.${until}`, 60 * 60 * 1000);
     return results;
   }
   if (quota && typeof quota.remaining === 'number' && quota.remaining < maxBidsThisRun) {
