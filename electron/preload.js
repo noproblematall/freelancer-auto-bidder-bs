@@ -17,4 +17,15 @@ contextBridge.exposeInMainWorld('electron', {
     relaunch: () => ipcRenderer.invoke('app:relaunch'),
     openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
   },
+  update: {
+    status: () => ipcRenderer.invoke('update:status'),
+    check: () => ipcRenderer.invoke('update:check'),
+    install: () => ipcRenderer.invoke('update:install'),
+    // Subscribe to status changes; returns an unsubscribe function.
+    onStatus: (cb) => {
+      const handler = (_e, status) => cb(status)
+      ipcRenderer.on('update:status', handler)
+      return () => ipcRenderer.removeListener('update:status', handler)
+    },
+  },
 })

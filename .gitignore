@@ -16,3 +16,5 @@ dist/
 # Offline license signing key (tools/keygen) — never commit
 tools/keygen/.secret/
 tools/keygen/app/private-key.generated.js
+# GitHub token for tools/release.js — never commit
+.github-token

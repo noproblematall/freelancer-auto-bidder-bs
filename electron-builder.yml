@@ -5,6 +5,15 @@ copyright: Copyright © 2026 BidPilot
 directories:
   output: dist/electron
 
+# Where installed apps look for updates (electron/updater.js) and where
+# `npm run release:win` uploads the installer + latest.yml. The repository is
+# public, so installed apps need no token to check it.
+publish:
+  provider: github
+  owner: noproblematall
+  repo: freelancer-auto-bidder-bs
+  releaseType: release
+
 afterPack: electron/afterPack.js
 
 # Files to include in the app bundle

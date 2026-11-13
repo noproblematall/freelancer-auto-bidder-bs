@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
+import UpdateStatus from './UpdateStatus'
 
 const navItems = [
   {
@@ -152,9 +153,7 @@ export default function Sidebar() {
             Trial — {trialDaysLeft} day{trialDaysLeft === 1 ? '' : 's'} left · <span className="underline">Buy license</span>
           </button>
         )}
-        <p className="px-3 py-1.5 text-xs text-slate-400 dark:text-slate-500">
-          BidPilot v{__APP_VERSION__}
-        </p>
+        <UpdateStatus />
       </div>
     </aside>
   )

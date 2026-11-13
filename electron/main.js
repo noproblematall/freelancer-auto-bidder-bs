@@ -6,6 +6,7 @@ const fs = require('fs')
 const crypto = require('crypto')
 const license = require('./license')
 const { createTray, hideToTrayOnMinimize, showWindow, destroyTray } = require('./tray')
+const updater = require('./updater')
 
 // Set app name before any getPath() call so userData stays ~/Library/Application Support/Growlance
 // (%APPDATA%\Growlance on Windows). The product is now called BidPilot, but existing installs keep
@@ -317,6 +318,7 @@ app.whenReady().then(async () => {
 
   // Wait for Express to be ready before opening the window
   waitForBackend(`http://localhost:${PORT}/api/health`).then(() => {
+    updater.setup(() => mainWindow)
     createWindow()
     createTray(() => mainWindow)
   }).catch((err) => {
