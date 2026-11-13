@@ -26,7 +26,11 @@ PROJECT:
     prompt += `\n\nFREELANCER PROFILE:`;
     if (profile.skillsSummary) prompt += `\n- Skills: ${profile.skillsSummary}`;
     if (profile.experienceSummary) prompt += `\n- Experience: ${profile.experienceSummary}`;
-    if (profile.portfolioHighlights) prompt += `\n- Portfolio (sample sites by skill):\n${profile.portfolioHighlights}`;
+    if (profile.portfolioHighlights) {
+      prompt += `\n- Portfolio (sample sites by skill):\n${profile.portfolioHighlights}`;
+      // Models otherwise pad bids with whichever links are nearest to hand.
+      prompt += `\n\nPORTFOLIO RULE: Cite a portfolio site only when its heading or description clearly matches this project's platform, stack or kind of work (a Shopify store for a Shopify project, a Laravel app for a Laravel project). Never pick links to fill a quota or because they are the closest available. If no site clearly matches, include no links at all and do not mention the portfolio.`;
+    }
   }
 
   prompt += `\n\nIMPORTANT: The bid MUST be under ${MAX_CHARS} characters total. Be concise. If you ask the client questions, put each question on its own line.`;

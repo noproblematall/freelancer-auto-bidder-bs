@@ -991,7 +991,7 @@ export default function SettingsPage() {
                 <label htmlFor="portfolio-highlights" className="block text-xs font-medium text-slate-700 dark:text-slate-200 mb-1.5">Portfolio Highlights</label>
                 <textarea id="portfolio-highlights" rows={16} value={portfolioHighlights} onChange={(e) => setPortfolioHighlights(e.target.value)} className="w-full px-3 py-2 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500/20 focus:border-navy-500 transition-colors placeholder:text-slate-400 dark:placeholder:text-slate-600" placeholder={"Your real projects, one per line: what you built, the kind of client, and the result.\n- e.g. Inventory app for a wholesale bakery (React Native + Node): barcode scanning, low-stock alerts, cut stock-takes from a day to an hour."} />
               </div>
-              <p className="text-xs text-slate-700 dark:text-slate-200">Used for every bid profile. One "- " bullet per line reads best. Skills and experience describe what you do; portfolio highlights are your sample sites grouped by skill, quoted when a client asks for examples.</p>
+              <p className="text-xs text-slate-700 dark:text-slate-200">Used for every bid profile. One "- " bullet per line reads best. Skills and experience describe what you do; portfolio highlights are your sample sites grouped by skill, quoted only when they clearly match the project. Add a few words after each link (what the site is, what stack) so the right ones get picked.</p>
               <div className="flex items-center gap-3">
                 <button
                   type="submit"

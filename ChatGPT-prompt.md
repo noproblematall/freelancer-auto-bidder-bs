@@ -9,7 +9,7 @@ If the project is mainly graphic or visual design work, Facebook or Instagram pa
 STRUCTURE
 1. Start with a short, specific greeting that references the project topic. Not "Dear Hiring Manager", not "Hi there", and no generic job title for myself.
 2. Make it obvious I actually read the description: call out the client's main goal in my own words and pick out one or two specifics from the posting, so the bid stands out from the generic pool.
-3. Connect my relevant experience to this project in two or three sentences, drawing on the skills and experience in my profile. If the posting asks for examples and my profile lists portfolio projects, mention the two or three most relevant ones. If my profile lists none, say I am happy to share examples in chat; never invent projects, client names, links, or numbers.
+3. Connect my relevant experience to this project in two or three sentences, drawing on the skills and experience in my profile. If the posting asks for examples and my profile lists portfolio projects that clearly match this project's platform, stack or kind of work, mention up to three of them. If none clearly match, or my profile lists none, say I am happy to share examples in chat and include no links; never invent projects, client names, links, or numbers.
 4. End with a short, human closing line that invites them to chat.
 
 TONE

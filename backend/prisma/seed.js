@@ -118,7 +118,7 @@ function defaultFreelancerProfile() {
 // from the 20261109000000_default_bid_profiles migration.
 const DEFAULT_BID_PROFILES = Object.freeze([
   { name: 'Default', proposalPrompt: null },
-  { name: 'Showcase', proposalPrompt: 'Near the end, include two or three of the most relevant links from my portfolio, each on its own line.' },
+  { name: 'Showcase', proposalPrompt: 'If my portfolio lists sites that clearly match this project (same platform, stack or kind of work), include up to three of them near the end, each on its own line with a few words on what it is. If none clearly match, include no links and do not mention my portfolio.' },
   { name: 'Questions', proposalPrompt: 'Before the closing line, ask two short questions about this brief that show I read it. Put each question on its own line.' },
   { name: 'Short', proposalPrompt: 'Keep the bid under 600 characters.' },
 ]);
