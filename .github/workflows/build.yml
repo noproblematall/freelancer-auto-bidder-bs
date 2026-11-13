@@ -73,6 +73,8 @@ jobs:
             dist/electron/*.exe
             dist/electron/*.AppImage
             dist/electron/*.deb
+            dist/electron/*.blockmap
+            dist/electron/latest*.yml
           if-no-files-found: ignore
           retention-days: 1
 
@@ -106,6 +108,19 @@ jobs:
             echo "No installers were produced by any build leg; skipping release."
           fi
 
+      # The installed apps update themselves from this release (electron/updater.js).
+      # latest.yml names the installer with dashes (BidPilot-Setup-1.2.3.exe), so the
+      # files are renamed to match before upload — GitHub would otherwise turn the
+      # spaces into dots and the updater could not find the file.
+      - name: Rename assets for the updater
+        if: steps.check.outputs.found == 'true'
+        shell: bash
+        run: |
+          find artifacts -type f -name '* *' | while read -r f; do
+            mv "$f" "$(dirname "$f")/$(basename "$f" | tr ' ' '-')"
+          done
+          ls -R artifacts
+
       - name: Create GitHub Release
         if: steps.check.outputs.found == 'true'
         uses: softprops/action-gh-release@v2
@@ -114,3 +129,19 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Installed apps only ever read the newest release, so older ones (and
+      # their tags) are removed.
+      - name: Remove older releases
+        if: steps.check.outputs.found == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          current="${GITHUB_REF_NAME}"
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName -q '.[].tagName' | while read -r tag; do
+            if [ -n "$tag" ] && [ "$tag" != "$current" ]; then
+              echo "removing $tag"
+              gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+            fi
+          done

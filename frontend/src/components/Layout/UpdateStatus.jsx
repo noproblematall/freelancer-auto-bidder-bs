@@ -57,9 +57,17 @@ export default function UpdateStatus() {
   const text = status.state === 'checking'
     ? 'Checking for updates…'
     : status.state === 'error'
-      ? (status.manual ? `Update check failed` : `BidPilot v${version}`)
-      : `BidPilot v${version} · up to date`
-  const title = status.state === 'error' ? status.message : status.state === 'up-to-date' ? 'This is the newest version on GitHub' : ''
+      ? (status.manual ? 'Update check failed' : `BidPilot v${version}`)
+      : status.state === 'no-release'
+        ? `BidPilot v${version} · no update published yet`
+        : `BidPilot v${version} · up to date`
+  const title = status.state === 'error'
+    ? status.message
+    : status.state === 'up-to-date'
+      ? 'This is the newest version on GitHub'
+      : status.state === 'no-release'
+        ? 'No release has been published on GitHub yet (npm run release:win publishes one)'
+        : ''
 
   return (
     <p className={`${base} text-slate-400 dark:text-slate-500 flex items-center justify-between`} title={title}>

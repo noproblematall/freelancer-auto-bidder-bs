@@ -32,6 +32,19 @@ function send(next) {
   if (win && !win.isDestroyed()) win.webContents.send('update:status', status)
 }
 
+// GitHub answers 404 (or has no latest.yml) while no release has been
+// published yet — that is "nothing to update to", not a failure.
+function isNoRelease(err) {
+  const m = String(err?.message || err || '')
+  return /404|not found|latest\.yml|no published versions|cannot find latest/i.test(m)
+}
+
+function describe(err) {
+  const m = String(err?.message || err || '')
+  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|ECONNRESET|net::ERR|getaddrinfo/i.test(m)) return 'Could not reach GitHub — check the internet connection.'
+  return m.split('\n')[0].slice(0, 200)
+}
+
 function check(manual = false) {
   if (!autoUpdater || !app.isPackaged) {
     if (manual) send({ state: 'unavailable', manual })
@@ -39,7 +52,8 @@ function check(manual = false) {
   }
   send({ state: 'checking', manual })
   return autoUpdater.checkForUpdates().catch((err) => {
-    send({ state: 'error', message: err.message, manual })
+    if (isNoRelease(err)) send({ state: 'no-release', manual, checkedAt: Date.now() })
+    else send({ state: 'error', message: describe(err), manual })
     return null
   })
 }
@@ -98,7 +112,10 @@ function setup(windowGetter) {
     send({ state: 'ready', latest: info.version, percent: 100 })
     offerRestart(info)
   })
-  autoUpdater.on('error', (err) => send({ state: 'error', message: err?.message || String(err) }))
+  autoUpdater.on('error', (err) => {
+    if (isNoRelease(err)) send({ state: 'no-release', checkedAt: Date.now() })
+    else send({ state: 'error', message: describe(err) })
+  })
 
   setTimeout(() => check(false), FIRST_CHECK_DELAY_MS)
   timer = setInterval(() => check(false), CHECK_EVERY_MS)
