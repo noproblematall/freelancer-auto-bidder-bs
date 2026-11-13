@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld('electron', {
   update: {
     status: () => ipcRenderer.invoke('update:status'),
     check: () => ipcRenderer.invoke('update:check'),
+    download: () => ipcRenderer.invoke('update:download'),
+    dismiss: () => ipcRenderer.invoke('update:dismiss'),
     install: () => ipcRenderer.invoke('update:install'),
     // Subscribe to status changes; returns an unsubscribe function.
     onStatus: (cb) => {

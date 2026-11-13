@@ -5,10 +5,12 @@
 // `npm run release:win` builds the installer and uploads it, with latest.yml,
 // to a GitHub Release of the repository named under `publish` in
 // electron-builder.yml. Every installed copy checks that release shortly
-// after start-up and then every few hours; a newer version is downloaded in
-// the background, the user is offered a restart, and whatever they choose the
-// update is installed the next time the app quits. The database, settings and
-// licence live in userData and are untouched by an update.
+// after start-up and then every few hours. A newer version is only announced
+// in the sidebar ("v1.2.3 available — Upgrade / Cancel"); nothing is
+// downloaded until the user clicks Upgrade. Once downloaded the user is
+// offered a restart, and whatever they choose the update is installed the
+// next time the app quits. The database, settings and licence live in
+// userData and are untouched by an update.
 const { app, dialog, ipcMain } = require('electron')
 
 let autoUpdater = null
@@ -58,6 +60,24 @@ function check(manual = false) {
   })
 }
 
+// The user chose "Upgrade": fetch the version found by the last check.
+function download() {
+  if (!autoUpdater || !app.isPackaged) return Promise.resolve(false)
+  if (status.state !== 'available') return Promise.resolve(false)
+  send({ state: 'downloading', percent: 0 })
+  return autoUpdater.downloadUpdate().then(() => true).catch((err) => {
+    send({ state: 'error', message: describe(err) })
+    return false
+  })
+}
+
+// The user chose "Cancel": stay on this version and stop mentioning the new
+// one until a later version appears (or they check again by hand).
+function dismiss() {
+  if (status.state !== 'available') return
+  send({ state: 'dismissed', dismissed: status.latest })
+}
+
 function install() {
   if (!autoUpdater) return
   // Stop the engine cleanly before the installer takes over.
@@ -87,6 +107,8 @@ function setup(windowGetter) {
 
   ipcMain.handle('update:status', () => status)
   ipcMain.handle('update:check', () => check(true).then(() => status))
+  ipcMain.handle('update:download', () => download().then(() => status))
+  ipcMain.handle('update:dismiss', () => { dismiss(); return status })
   ipcMain.handle('update:install', () => { install(); return true })
 
   if (!autoUpdater || !app.isPackaged) {
@@ -94,7 +116,8 @@ function setup(windowGetter) {
     return
   }
 
-  autoUpdater.autoDownload = true
+  // Nothing is downloaded until the user clicks "Upgrade" in the sidebar.
+  autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
   autoUpdater.allowDowngrade = false
   autoUpdater.logger = {
@@ -106,7 +129,12 @@ function setup(windowGetter) {
 
   autoUpdater.on('checking-for-update', () => send({ state: 'checking' }))
   autoUpdater.on('update-not-available', (info) => send({ state: 'up-to-date', latest: info?.version, checkedAt: Date.now() }))
-  autoUpdater.on('update-available', (info) => send({ state: 'downloading', latest: info.version, percent: 0 }))
+  autoUpdater.on('update-available', (info) => {
+    // A version the user already declined is not offered again by the
+    // background check; a manual check always shows it.
+    if (!status.manual && status.dismissed === info.version) { send({ state: 'dismissed', latest: info.version }); return }
+    send({ state: 'available', latest: info.version, dismissed: null, releaseNotes: typeof info.releaseNotes === 'string' ? info.releaseNotes.slice(0, 2000) : null })
+  })
   autoUpdater.on('download-progress', (p) => send({ state: 'downloading', percent: Math.round(p.percent), bytesPerSecond: p.bytesPerSecond }))
   autoUpdater.on('update-downloaded', (info) => {
     send({ state: 'ready', latest: info.version, percent: 100 })
@@ -122,4 +150,4 @@ function setup(windowGetter) {
   app.on('before-quit', () => { if (timer) clearInterval(timer) })
 }
 
-module.exports = { setup, check, install, getStatus: () => status }
+module.exports = { setup, check, download, dismiss, install, getStatus: () => status }
