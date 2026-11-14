@@ -68,6 +68,10 @@ async function runAllActiveProfiles() {
     queued: 0,
     errors: 0,
     openaiError: null,
+    // Profiles that stopped before searching Freelancer, and the reason the
+    // first of them gave (see engine.js `skip`).
+    skippedProfiles: 0,
+    skipped: null,
   };
 
   try {
@@ -139,6 +143,10 @@ async function runAllActiveProfiles() {
           totalResults.queued += results.queued || 0;
           totalResults.errors += results.errors;
           if (results.openaiError && !totalResults.openaiError) totalResults.openaiError = results.openaiError;
+          if (results.skipped) {
+            totalResults.skippedProfiles += 1;
+            if (!totalResults.skipped) totalResults.skipped = results.skipped;
+          }
         } catch (err) {
           if (err instanceof FatalBidError) {
             logger.error(`Scheduler: FATAL — auto-pausing all profiles for user ${profile.userId}: ${err.message}`);

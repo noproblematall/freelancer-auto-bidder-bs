@@ -4,7 +4,7 @@ const { createFreelancerClient } = require('../freelancer/client');
 const { refreshAccessToken } = require('../freelancer/auth');
 const { searchProjects } = require('../freelancer/projects');
 const { placeBid, sealBid, getBidById, MILESTONE_PERCENTAGE } = require('../freelancer/bids');
-const { getBidQuota, markBidsExhausted, noteBidPlaced, isOutOfBidsError, restoreExhaustedFromDb } = require('../freelancer/bidQuota');
+const { getBidQuota, markBidsExhausted, noteBidPlaced, isOutOfBidsError, restoreExhaustedFromDb, latestProjectId } = require('../freelancer/bidQuota');
 const { notifyBidPlaced, notifyBidError } = require('../notifications/telegram');
 const { createOpenAIClient } = require('../openai/client');
 const { analyzeProject } = require('../openai/analyzer');
@@ -90,7 +90,11 @@ async function remainingBidBudget(userId) {
 // the scheduler when several profiles are active). Without it the profile may
 // use everything that is left.
 async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1, maxBids = Infinity } = {}) {
-  const results = { searched: 0, filtered: 0, analyzed: 0, qualified: 0, placed: 0, queued: 0, errors: 0, openaiError: null };
+  // `skipped` names why the run stopped before searching Freelancer (bid cap,
+  // no bids left, not connected…) so the idle report does not read "0 searched"
+  // as "Freelancer returned nothing".
+  const results = { searched: 0, filtered: 0, analyzed: 0, qualified: 0, placed: 0, queued: 0, errors: 0, openaiError: null, skipped: null };
+  const skip = (reason) => { results.skipped = reason; return results; };
 
   // Fold the account's job filters, review mode and AI context into this
   // profile so every step below sees the effective values.
@@ -105,13 +109,13 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
     logger.info(`Profile "${profile.name}": account hourly limit reached (${bidsThisHour}/${maxBidsPerHour})`);
     await logProblemOnce(profile.userId, 'bid_cap_reached',
       `Hourly bid limit reached (${bidsThisHour} of ${maxBidsPerHour}). Drafts waiting for review count too. Bidding resumes when the hour rolls over.`, 60 * 60 * 1000);
-    return results;
+    return skip('bid_cap_reached');
   }
   if (bidsLast24h >= maxBidsPerDay) {
     logger.info(`Profile "${profile.name}": account daily limit reached (${bidsLast24h}/${maxBidsPerDay})`);
     await logProblemOnce(profile.userId, 'bid_cap_reached',
       `Daily bid limit reached (${bidsLast24h} of ${maxBidsPerDay}). Drafts waiting for review count too. Raise the limit in Settings or wait.`, 60 * 60 * 1000);
-    return results;
+    return skip('bid_cap_reached');
   }
 
   // Calculate max bids allowed in this run (most restrictive of hourly/daily limits)
@@ -122,7 +126,7 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
   logger.info(`Profile "${profile.name}" account rate limits: ${bidsThisHour}/${maxBidsPerHour} this hour, ${bidsLast24h}/${maxBidsPerDay} last 24h, max this run: ${maxBidsThisRun}${Number.isFinite(maxBids) ? ` (share ${maxBids})` : ''}`);
   if (maxBidsThisRun <= 0) {
     logger.info(`Profile "${profile.name}": no bid budget left in this run, skipping`);
-    return results;
+    return skip('bid_cap_reached');
   }
 
   // Step 2: Get clients
@@ -131,7 +135,7 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
     logger.warn(`No Freelancer token for user ${profile.userId}`);
     await logProblemOnce(profile.userId, 'freelancer_not_connected',
       'No Freelancer account is connected, so no projects can be searched. Connect it in Settings.');
-    return results;
+    return skip('freelancer_not_connected');
   }
 
   const freelancerUid = parseInt(tokenRecord.freelancerUid);
@@ -139,7 +143,7 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
     logger.warn(`Invalid or missing Freelancer UID for user ${profile.userId} — re-authentication required`);
     await logProblemOnce(profile.userId, 'freelancer_not_connected',
       'The Freelancer connection is incomplete (no account id). Reconnect in Settings to resume bidding.');
-    return results;
+    return skip('freelancer_not_connected');
   }
 
   // Load user (including per-user Freelancer API credentials) up front so the
@@ -165,12 +169,12 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
     if (!tokenRecord.refreshToken) {
       logger.warn(`Freelancer token expired and no refresh token available for user ${profile.userId} — re-authentication required`);
       await logProblemOnce(profile.userId, 'token_refresh_failed', 'Freelancer connection expired and cannot be renewed automatically. Reconnect in Settings to resume bidding.');
-      return results;
+      return skip('token_refresh_failed');
     }
     if (!user?.freelancerClientId || !user?.freelancerClientSecret) {
       logger.warn(`Freelancer token expired for user ${profile.userId} but no API credentials configured — re-authentication required`);
       await logProblemOnce(profile.userId, 'token_refresh_failed', 'Freelancer connection expired and cannot be renewed automatically. Reconnect in Settings to resume bidding.');
-      return results;
+      return skip('token_refresh_failed');
     }
     try {
       logger.info(`Freelancer token expired/expiring for user ${profile.userId} — attempting auto-refresh`);
@@ -180,7 +184,7 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
       } catch (e) {
         logger.error(`Failed to decrypt Freelancer client secret for user ${profile.userId}: ${e.message}`);
         await logProblemOnce(profile.userId, 'token_refresh_failed', 'Freelancer connection expired and cannot be renewed automatically. Reconnect in Settings to resume bidding.');
-        return results;
+        return skip('token_refresh_failed');
       }
       const refreshed = await refreshAccessToken(decrypt(tokenRecord.refreshToken), {
         clientId: user.freelancerClientId,
@@ -209,23 +213,25 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
       // and the user has no idea bidding is dead until they read log files.
       await logProblemOnce(profile.userId, 'token_refresh_failed',
         'Freelancer connection expired and could not be refreshed. Reconnect in Settings to resume bidding.');
-      return results;
+      return skip('token_refresh_failed');
     }
   }
 
   const flClient = createFreelancerClient(plainAccessToken);
 
   // Step 2b: Freelancer's own bid allowance. With none left every bid would be
-  // rejected, so stop here — before any project is sent to OpenAI.
+  // rejected, so stop here — before Freelancer is searched and before any
+  // project is sent to OpenAI. The Projects page's "Search Freelancer" button
+  // is unaffected; only the automatic runs pause.
   // A "no bids left" rejection recorded before an app restart still counts.
   await restoreExhaustedFromDb(profile.userId, prisma);
-  const quota = await getBidQuota(profile.userId, flClient);
+  const quota = await getBidQuota(profile.userId, flClient, { projectId: await latestProjectId(prisma) });
   if (quota && quota.remaining === 0) {
     const until = quota.exhaustedUntil ? ` Next try at ${new Date(quota.exhaustedUntil).toLocaleTimeString()}.` : '';
-    logger.warn(`Profile "${profile.name}": the Freelancer account has no bids left${quota.limit !== null ? ` (allowance ${quota.limit})` : ''}${until}`);
+    logger.warn(`Profile "${profile.name}": the Freelancer account has no bids left${quota.limit !== null ? ` (allowance ${quota.limit})` : ''}, not searching${until}`);
     await logProblemOnce(profile.userId, 'freelancer_bids_exhausted',
-      `Your Freelancer account has no bids left${quota.limit !== null ? ` (membership allowance ${quota.limit})` : ''}. Nothing is sent to OpenAI until bids refill or you upgrade the membership; bidding resumes by itself.${until}`, 60 * 60 * 1000);
-    return results;
+      `Your Freelancer account has no bids left${quota.limit !== null ? ` (membership allowance ${quota.limit})` : ''}. Automatic runs do not search Freelancer or call OpenAI until bids refill or you upgrade the membership; bidding resumes by itself.${until}`, 60 * 60 * 1000);
+    return skip('freelancer_bids_exhausted');
   }
   if (quota && typeof quota.remaining === 'number' && quota.remaining < maxBidsThisRun) {
     logger.info(`Profile "${profile.name}": only ${quota.remaining} Freelancer bid(s) left, capping this run`);
@@ -236,7 +242,7 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
     logger.warn(`No OpenAI API key for user ${profile.userId}`);
     await logProblemOnce(profile.userId, 'openai_not_configured',
       'No OpenAI API key configured — projects cannot be analyzed or bid on. Add your key in Settings.');
-    return results;
+    return skip('openai_not_configured');
   }
   const openai = createOpenAIClient(decrypt(user.openaiApiKey), user.openaiModel || 'gpt-5.4-mini');
   const bidDelayMs = (user?.bidDelaySeconds ?? 0) * 1000;
@@ -860,7 +866,7 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
         if (outOfBids) {
           markBidsExhausted(profile.userId, placeErr.message);
           await logProblemOnce(profile.userId, 'freelancer_bids_exhausted',
-            `Freelancer rejected a bid because the account has no bids left ("${placeErr.message}"). Nothing is sent to OpenAI for an hour; bidding resumes by itself.`, 60 * 60 * 1000);
+            `Freelancer rejected a bid because the account has no bids left ("${placeErr.message}"). Automatic runs do not search Freelancer or call OpenAI for a while; bidding resumes by itself.`, 60 * 60 * 1000);
         }
 
         await prisma.activityLog.create({

@@ -5,7 +5,7 @@ const flClient = require('../middleware/freelancerClient');
 const { placeBid, retractBid, MILESTONE_PERCENTAGE } = require('../services/freelancer/bids');
 const logger = require('../utils/logger');
 const { explainIdle } = require('../services/bidding/idleReport');
-const { getBidQuota, noteBidPlaced, markBidsExhausted, isOutOfBidsError, restoreExhaustedFromDb } = require('../services/freelancer/bidQuota');
+const { getBidQuota, noteBidPlaced, markBidsExhausted, isOutOfBidsError, restoreExhaustedFromDb, latestProjectId } = require('../services/freelancer/bidQuota');
 const { decrypt } = require('../utils/tokenManager');
 
 const router = express.Router();
@@ -34,23 +34,31 @@ router.get('/idle', async (req, res, next) => {
 
 // GET /api/bids/quota — Bids left on the Freelancer account (must be before /:id).
 // { remaining, limit, membership, fetchedAt }; remaining is null when Freelancer
-// does not report it. ?refresh=1 bypasses the 10-minute cache.
+// does not report it, and `source` is 'rejection' when the 0 is assumed from a
+// rejected bid. ?refresh=1 bypasses the 10-minute cache and ends such a pause.
 router.get('/quota', async (req, res, next) => {
   try {
     const tokenRecord = await prisma.freelancerToken.findUnique({ where: { userId: req.userId } });
     if (!tokenRecord) return res.json({ connected: false, remaining: null, limit: null });
     const { createFreelancerClient } = require('../services/freelancer/client');
     const client = createFreelancerClient(decrypt(tokenRecord.accessToken));
-    await restoreExhaustedFromDb(req.userId, prisma);
-    const q = await getBidQuota(req.userId, client, { force: req.query.refresh === '1' });
+    const force = req.query.refresh === '1';
+    if (!force) await restoreExhaustedFromDb(req.userId, prisma);
+    else {
+      // Remember the click so a restart does not replay the ended pause.
+      await prisma.activityLog.create({ data: { userId: req.userId, action: 'bid_quota_retry', details: JSON.stringify({ message: 'Bid allowance re-checked by hand; the pause after a rejected bid was ended.' }) } }).catch(() => {});
+    }
+    const q = await getBidQuota(req.userId, client, { force, projectId: await latestProjectId(prisma) });
     res.json({
       connected: true,
       remaining: q?.remaining ?? null,
       limit: q?.limit ?? null,
+      source: q?.source ?? null,
       membership: q?.membership ?? null,
       fetchedAt: q?.fetchedAt ?? null,
       exhaustedUntil: q?.exhaustedUntil ?? null,
       lastRejection: q?.lastRejection ?? null,
+      lastRejectionAt: q?.lastRejectionAt ?? null,
       keys: q?.keys ?? [],   // bid-related fields Freelancer returned, for diagnosing an unknown count
       error: q?.error ?? null,
     });

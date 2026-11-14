@@ -95,13 +95,14 @@ function findBenefit(obj, namePattern, valueKeys, path = '', depth = 0) {
   return null;
 }
 
-// Every key path that mentions "bid", for the log when the count is unknown.
-function bidKeyPaths(obj, path = '', out = [], depth = 0) {
+// Every key path that mentions "bid" (or every scalar key path, with `all`),
+// for the log when the count is unknown.
+function bidKeyPaths(obj, path = '', out = [], depth = 0, all = false) {
   if (!obj || typeof obj !== 'object' || depth > 6 || out.length >= 40) return out;
   for (const [k, v] of Object.entries(obj)) {
     const p = path ? `${path}.${k}` : k;
-    if (/bid/i.test(k)) out.push(typeof v === 'object' ? p : `${p}=${JSON.stringify(v)}`);
-    if (v && typeof v === 'object') bidKeyPaths(v, p, out, depth + 1);
+    if (all ? typeof v !== 'object' : /bid/i.test(k)) out.push(typeof v === 'object' ? p : `${p}=${JSON.stringify(v)}`);
+    if (v && typeof v === 'object') bidKeyPaths(v, p, out, depth + 1, all);
   }
   return out;
 }
@@ -111,16 +112,61 @@ function isOutOfBidsError(message) {
   return OUT_OF_BIDS_PATTERNS.some(p => p.test(text));
 }
 
-async function fetchBidQuota(client) {
+// Freelancer also has a per-project "bid info" endpoint ("information for
+// posting bids on a project" — the path is only documented in third-party
+// SDKs, so both spellings are tried). It is read for a recent project when the
+// self response did not carry the count. A path that answered is remembered;
+// when none does, the probe is repeated at most once an hour.
+const BID_INFO_PATHS = ['/projects/0.1/projects/{id}/bidinfo/', '/projects/0.1/projects/{id}/bids_info/'];
+const BID_INFO_RETRY_MS = 60 * 60 * 1000;
+let bidInfoPath = null;
+let bidInfoFailedAt = 0;
+
+async function fetchProjectBidInfo(client, projectId) {
+  if (!projectId) return null;
+  if (!bidInfoPath && Date.now() - bidInfoFailedAt < BID_INFO_RETRY_MS) return null;
+  for (const p of bidInfoPath ? [bidInfoPath] : BID_INFO_PATHS) {
+    try {
+      const res = await client.get(p.replace('{id}', String(projectId)));
+      const body = res.data?.result ?? res.data;
+      if (body && typeof body === 'object') { bidInfoPath = p; return body; }
+    } catch (err) {
+      const status = err.response?.status;
+      if (status && status !== 404) logger.warn(`Freelancer bid info (${p}): HTTP ${status} ${err.message}`);
+    }
+  }
+  bidInfoFailedAt = Date.now();
+  return null;
+}
+
+
+// `projectId` (a Freelancer project id) lets the per-project bid info be
+// consulted as well.
+async function fetchBidQuota(client, { projectId = null } = {}) {
   const response = await client.get('/users/0.1/self/', {
     params: { membership_details: true, limited_account: true, bid_quality_details: true },
   });
   const result = response.data?.result || {};
-  const remaining = findKey(result, REMAINING_KEYS)
+  let remaining = findKey(result, REMAINING_KEYS)
     || findBenefit(result, /^(bids?_)?remaining(_bids?)?$|^bids?_left$|^bids?_balance$/i, ['remaining', 'value', 'count', 'amount']);
-  const limit = findKey(result, LIMIT_KEYS)
+  let limit = findKey(result, LIMIT_KEYS)
     || findBenefit(result, /^bids?(_limit|_quota|_allowance|_count)?$|^(monthly_)?bid_limit$/i, VALUE_KEYS);
   const keys = bidKeyPaths(result);
+  if (!remaining && projectId) {
+    const info = await fetchProjectBidInfo(client, projectId);
+    if (info) {
+      // Only bid-named keys: a bare "remaining" in that reply could mean
+      // anything, and a wrong 0 would stop bidding altogether.
+      remaining = findKey(info, REMAINING_KEYS)
+        || findBenefit(info, /^(bids?_)?remaining(_bids?)?$|^bids?_left$|^bids?_balance$/i, ['remaining', 'value', 'count', 'amount']);
+      if (remaining) remaining.path = `bidinfo.${remaining.path}`;
+      if (!limit) {
+        limit = findKey(info, LIMIT_KEYS) || findBenefit(info, /^bids?(_limit|_quota|_allowance)?$|^(monthly_)?bid_limit$/i, VALUE_KEYS);
+        if (limit) limit.path = `bidinfo.${limit.path}`;
+      }
+      for (const k of bidKeyPaths(info, '', [], 0, true)) keys.push(`bidinfo.${k}`);
+    }
+  }
   const quota = {
     remaining: toNumber(remaining?.value),
     limit: toNumber(limit?.value),
@@ -141,19 +187,22 @@ async function fetchBidQuota(client) {
 }
 
 // Cached read. `client` is a Freelancer API client for the user; without one
-// only the cache is consulted.
-async function getBidQuota(userId, client, { force = false } = {}) {
+// only the cache is consulted. `force` is the user clicking the bids pill:
+// it also ends a pause that came from a rejected bid, since bids refill over
+// time and the user can see the real count on their Freelancer dashboard.
+async function getBidQuota(userId, client, { force = false, projectId = null } = {}) {
   const cached = cache.get(userId);
   const now = Date.now();
-  if (cached && cached.exhaustedUntil && cached.exhaustedUntil > now) return cached;
+  if (!force && cached && cached.exhaustedUntil && cached.exhaustedUntil > now) return cached;
   if (!force && cached && now - cached.fetchedAt < CACHE_MS) return cached;
   if (!client) return cached || null;
   try {
-    const quota = await fetchBidQuota(client);
+    const quota = await fetchBidQuota(client, { projectId });
     // Freelancer not reporting the count says nothing about earlier
-    // rejections, so the strike count carries over; a reported count resets it.
+    // rejections, so the strike count carries over; a reported count resets
+    // it, and so does the user asking for a fresh try.
     if (quota.remaining === null && cached) {
-      quota.rejections = cached.rejections || 0;
+      quota.rejections = force ? 0 : (cached.rejections || 0);
       quota.lastRejection = cached.lastRejection;
       quota.lastRejectionAt = cached.lastRejectionAt;
     }
@@ -163,6 +212,7 @@ async function getBidQuota(userId, client, { force = false } = {}) {
     const status = err.response?.status;
     logger.warn(`Could not read the Freelancer bid allowance: HTTP ${status ?? 'NETWORK'} ${err.message}`);
     const failed = { ...(cached || { remaining: null, limit: null, source: null, limitSource: null, membership: null }), fetchedAt: now, error: err.message };
+    if (force && failed.source === 'rejection') { failed.remaining = null; failed.exhaustedUntil = null; failed.rejections = 0; }
     cache.set(userId, failed);
     return failed;
   }
@@ -185,6 +235,7 @@ function markBidsExhausted(userId, message, { at = Date.now() } = {}) {
   cache.set(userId, {
     ...prev,
     remaining: 0,
+    source: 'rejection',   // assumed from the rejected bid, not a count Freelancer reported
     fetchedAt: at,
     exhaustedUntil: at + waitMs,
     rejections: strikes,
@@ -200,6 +251,8 @@ function noteBidPlaced(userId) {
   const q = cache.get(userId);
   if (!q) return;
   if (typeof q.remaining === 'number' && q.remaining > 0) q.remaining -= 1;
+  // A zero that came from a rejection is stale now; read it again next time.
+  if (q.source === 'rejection' && q.remaining === 0) { q.remaining = null; q.source = null; q.fetchedAt = 0; }
   q.rejections = 0;
   q.exhaustedUntil = null;
 }
@@ -219,7 +272,12 @@ async function restoreExhaustedFromDb(userId, prisma) {
     take: 10,
     select: { errorMessage: true, createdAt: true },
   });
-  const rejections = recent.filter(b => isOutOfBidsError(b.errorMessage)).reverse();
+  let rejections = recent.filter(b => isOutOfBidsError(b.errorMessage)).reverse();
+  if (rejections.length === 0) return false;
+  // The user clicking "retry" (bid_quota_retry) ends the pause; rejections
+  // before that click stay ended across a restart.
+  const retry = await prisma.activityLog.findFirst({ where: { userId, action: 'bid_quota_retry' }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } });
+  if (retry) rejections = rejections.filter(r => r.createdAt > retry.createdAt);
   if (rejections.length === 0) return false;
   // Any bid placed after the last rejection means the allowance refilled.
   const last = rejections[rejections.length - 1].createdAt;
@@ -234,4 +292,12 @@ function clearBidQuota(userId) {
   cache.delete(userId);
 }
 
-module.exports = { getBidQuota, getCachedBidQuota, markBidsExhausted, noteBidPlaced, restoreExhaustedFromDb, clearBidQuota, isOutOfBidsError, fetchBidQuota, findKey, findBenefit, bidKeyPaths, CACHE_MS, EXHAUSTED_MS, EXHAUSTED_MAX_MS };
+// A recent active project id, for the per-project bid info probe.
+async function latestProjectId(prisma) {
+  try {
+    const p = await prisma.project.findFirst({ where: { status: 'active' }, orderBy: { discoveredAt: 'desc' }, select: { freelancerProjectId: true } });
+    return p?.freelancerProjectId ?? null;
+  } catch { return null; }
+}
+
+module.exports = { getBidQuota, getCachedBidQuota, markBidsExhausted, noteBidPlaced, restoreExhaustedFromDb, clearBidQuota, latestProjectId, isOutOfBidsError, fetchBidQuota, fetchProjectBidInfo, findKey, findBenefit, bidKeyPaths, CACHE_MS, EXHAUSTED_MS, EXHAUSTED_MAX_MS };

@@ -525,7 +525,8 @@ export default function BidsPage() {
               </ul>
               {idle.runs && idle.runs.count > 0 && (
                 <p className="mt-2 text-xs text-amber-700/80 dark:text-amber-300/70">
-                  Last {Math.round(idle.windowMinutes / 60)} hours: {idle.runs.count} run{idle.runs.count === 1 ? '' : 's'}, {idle.runs.searched} projects found, {idle.runs.filtered} new after filters, {idle.runs.analyzed} analyzed, {idle.runs.qualified} relevant
+                  Last {Math.round(idle.windowMinutes / 60)} hours: {idle.runs.count} run{idle.runs.count === 1 ? '' : 's'}
+                  {idle.runs.skipped > 0 ? ` (${idle.runs.skipped} stopped before searching)` : ''}, {idle.runs.searched} projects found, {idle.runs.filtered} new after filters, {idle.runs.analyzed} analyzed, {idle.runs.qualified} relevant
                   {idle.runs.errors > 0 ? `, ${idle.runs.errors} errors` : ''}.{' '}
                   <Link to="/activity" className="underline hover:text-amber-900 dark:hover:text-amber-200">Activity Logs</Link>
                 </p>

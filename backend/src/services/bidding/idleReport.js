@@ -68,7 +68,16 @@ async function explainIdle(userId, { now = Date.now(), windowMs = IDLE_WINDOW_MS
   if (!token) add('freelancer', 'Freelancer is not connected', 'Connect your Freelancer account under Settings → Freelancer.com.');
   else if (isExpired(token.expiresAt) && !token.refreshToken) add('freelancer', 'The Freelancer connection has expired', 'Reconnect under Settings → Freelancer.com.');
   const quota = getCachedBidQuota(userId);
-  if (quota && quota.remaining === 0) add('freelancer_bids_exhausted', 'Your Freelancer account has no bids left', `The membership allowance${quota.limit !== null ? ` of ${quota.limit}` : ''} is used up. Bids refill over time, or upgrade the membership on Freelancer.com. Nothing is sent to OpenAI meanwhile.`);
+  if (quota && quota.remaining === 0) {
+    const fmt = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const nextTry = quota.exhaustedUntil ? ` (next try at ${fmt(quota.exhaustedUntil)})` : '';
+    if (quota.source === 'rejection') {
+      add('freelancer_bids_exhausted', 'Freelancer rejected the last bid: no bids left',
+        `${quota.lastRejectionAt ? `At ${fmt(quota.lastRejectionAt)} ` : ''}Freelancer said "${quota.lastRejection || 'no bids left'}". It does not report how many bids are left, so the account is assumed empty for a while; bids refill over time. Meanwhile the automatic runs do not search Freelancer or call OpenAI${nextTry}; the Projects page's "Search Freelancer" button still works. If your Freelancer dashboard shows bids left, click the bids pill in the header to try again now.`);
+    } else {
+      add('freelancer_bids_exhausted', 'Your Freelancer account has no bids left', `The membership allowance${quota.limit !== null ? ` of ${quota.limit}` : ''} is used up. Bids refill over time, or upgrade the membership on Freelancer.com. Meanwhile the automatic runs do not search Freelancer or call OpenAI${nextTry}; the Projects page's "Search Freelancer" button still works.`);
+    }
+  }
   if (!user?.openaiApiKey) add('openai', 'No OpenAI API key is set', 'Add your key under Settings → OpenAI. Projects cannot be scored or written without it.');
 
   const schedule = await checkGlobalSchedule();
@@ -102,11 +111,17 @@ async function explainIdle(userId, { now = Date.now(), windowMs = IDLE_WINDOW_MS
     where: { userId, action: 'scheduler_run_completed', createdAt: { gte: since } },
     select: { details: true },
   });
-  const runs = { count: runRows.length, searched: 0, filtered: 0, analyzed: 0, qualified: 0, errors: 0, openaiError: null };
+  // `skipped` counts runs that stopped before searching Freelancer (no bids
+  // left, bid cap, not connected…); `skippedReason` is the first reason seen.
+  const runs = { count: runRows.length, searched: 0, filtered: 0, analyzed: 0, qualified: 0, errors: 0, openaiError: null, skipped: 0, skippedReason: null };
   for (const row of runRows) {
     const r = parse(row.details).results || {};
     for (const k of ['searched', 'filtered', 'analyzed', 'qualified', 'errors']) runs[k] += Number(r[k]) || 0;
     if (r.openaiError && !runs.openaiError) runs.openaiError = r.openaiError;
+    if (r.skipped && !(Number(r.searched) > 0)) {
+      runs.skipped += 1;
+      if (!runs.skippedReason) runs.skippedReason = r.skipped;
+    }
   }
   const bidErrors = await prisma.bid.count({ where: { userId, status: 'error', createdAt: { gte: since } } });
 
@@ -117,7 +132,13 @@ async function explainIdle(userId, { now = Date.now(), windowMs = IDLE_WINDOW_MS
     }
   } else if (engineCouldRun) {
     const minScore = Math.min(...activeProfiles.map(p => p.minRelevanceScore ?? 70));
-    if (runs.searched === 0) {
+    if (runs.searched === 0 && runs.skipped > 0) {
+      // The runs never asked Freelancer for projects, so this is not a search
+      // problem. The cause is normally listed already (sections 1 and 3); if
+      // its log entry fell outside the window, name it here.
+      add(runs.skippedReason, PROBLEM_ACTIONS[runs.skippedReason] || 'The runs stopped before searching',
+        `${runs.skipped} of the last ${runs.count} run${runs.count === 1 ? '' : 's'} stopped before searching Freelancer. Activity Logs has the details.`);
+    } else if (runs.searched === 0) {
       add('no_projects', 'Freelancer returned no projects', `${runs.count} run${runs.count === 1 ? '' : 's'} searched and found nothing. The Job Filters' languages and allowed countries narrow the search; check them.`);
     } else if (runs.filtered === 0) {
       add('all_filtered', 'Every project found was already bid on, scored too low earlier, or removed by your Job Filters', `${runs.searched} found across ${runs.count} run${runs.count === 1 ? '' : 's'}, none left to analyze. Loosen the Job Filters (budget, countries, currencies) or lower the minimum relevance to see more.`);
