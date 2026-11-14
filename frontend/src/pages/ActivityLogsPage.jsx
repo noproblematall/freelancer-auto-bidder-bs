@@ -41,6 +41,7 @@ const ACTION_COLORS = {
   project_search_failed: 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
   freelancer_bids_exhausted: 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400',
   bid_quota_retry: 'bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-400',
+  bid_quota_fields: 'bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-400',
   bid_cap_reached: 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
   bid_queued_for_review: 'bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400',
   bid_placed_manual: 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400',
@@ -61,6 +62,7 @@ const ACTION_LABELS = {
   project_search_failed: 'Project Search Failed',
   freelancer_bids_exhausted: 'No Freelancer Bids Left',
   bid_quota_retry: 'Bid Allowance Re-checked by Hand',
+  bid_quota_fields: 'Freelancer Bid Count Not Reported (fields seen)',
   bid_cap_reached: 'Bid Limit Reached',
   bid_placed: 'Bid Placed',
   bid_placed_manual: 'Bid Approved & Placed',
@@ -167,7 +169,7 @@ export default function ActivityLogsPage() {
     }
 
     // Operational problems: render the human message, never a JSON blob
-    if (['scheduler_auto_paused', 'openai_stall_detected', 'openai_not_configured', 'token_refresh_failed', 'freelancer_not_connected', 'project_search_failed', 'bid_cap_reached', 'freelancer_bids_exhausted'].includes(log.action)) {
+    if (['scheduler_auto_paused', 'openai_stall_detected', 'openai_not_configured', 'token_refresh_failed', 'freelancer_not_connected', 'project_search_failed', 'bid_cap_reached', 'freelancer_bids_exhausted', 'bid_quota_retry', 'bid_quota_fields'].includes(log.action)) {
       return (
         <div className="text-xs text-amber-700 dark:text-amber-400 space-y-0.5">
           {(details.message || details.reason) && <div>{details.message || details.reason}</div>}

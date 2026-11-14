@@ -4,7 +4,7 @@ const { createFreelancerClient } = require('../freelancer/client');
 const { refreshAccessToken } = require('../freelancer/auth');
 const { searchProjects } = require('../freelancer/projects');
 const { placeBid, sealBid, getBidById, MILESTONE_PERCENTAGE } = require('../freelancer/bids');
-const { getBidQuota, markBidsExhausted, noteBidPlaced, isOutOfBidsError, restoreExhaustedFromDb, latestProjectId } = require('../freelancer/bidQuota');
+const { getBidQuota, markBidsExhausted, noteBidPlaced, isOutOfBidsError, restoreExhaustedFromDb, latestProjectId, bidInfoStatus } = require('../freelancer/bidQuota');
 const { notifyBidPlaced, notifyBidError } = require('../notifications/telegram');
 const { createOpenAIClient } = require('../openai/client');
 const { analyzeProject } = require('../openai/analyzer');
@@ -225,7 +225,7 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
   // is unaffected; only the automatic runs pause.
   // A "no bids left" rejection recorded before an app restart still counts.
   await restoreExhaustedFromDb(profile.userId, prisma);
-  const quota = await getBidQuota(profile.userId, flClient, { projectId: await latestProjectId(prisma) });
+  const quota = await getBidQuota(profile.userId, flClient, { freelancerUid, projectId: await latestProjectId(prisma) });
   if (quota && quota.remaining === 0) {
     const until = quota.exhaustedUntil ? ` Next try at ${new Date(quota.exhaustedUntil).toLocaleTimeString()}.` : '';
     logger.warn(`Profile "${profile.name}": the Freelancer account has no bids left${quota.limit !== null ? ` (allowance ${quota.limit})` : ''}, not searching${until}`);
@@ -236,6 +236,16 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
   if (quota && typeof quota.remaining === 'number' && quota.remaining < maxBidsThisRun) {
     logger.info(`Profile "${profile.name}": only ${quota.remaining} Freelancer bid(s) left, capping this run`);
     maxBidsThisRun = quota.remaining;
+  }
+  // Freelancer does not document where the count lives. When it was not
+  // found, record once a day what the API did return, so the right field can
+  // be identified from Activity Logs.
+  if (quota && quota.remaining === null && !quota.error && Array.isArray(quota.keys)) {
+    const info = bidInfoStatus();
+    const gaf = info.bidLimitError ? `The dashboard's bid-limit call failed (${info.bidLimitError}).` : 'The dashboard\'s bid-limit call answered without a count.';
+    const probe = info.path ? `The per-project bid info endpoint (${info.path}) answered.` : `The per-project bid info endpoint did not answer${info.lastError ? ` (${info.lastError})` : ''}.`;
+    await logProblemOnce(profile.userId, 'bid_quota_fields',
+      `Freelancer did not report how many bids are left. ${gaf} ${probe} Bid-related fields returned: ${quota.keys.join(', ') || 'none'}.`, 24 * 60 * 60 * 1000);
   }
 
   if (!user?.openaiApiKey) {

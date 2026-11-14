@@ -48,11 +48,14 @@ router.get('/quota', async (req, res, next) => {
       // Remember the click so a restart does not replay the ended pause.
       await prisma.activityLog.create({ data: { userId: req.userId, action: 'bid_quota_retry', details: JSON.stringify({ message: 'Bid allowance re-checked by hand; the pause after a rejected bid was ended.' }) } }).catch(() => {});
     }
-    const q = await getBidQuota(req.userId, client, { force, projectId: await latestProjectId(prisma) });
+    const q = await getBidQuota(req.userId, client, { force, freelancerUid: tokenRecord.freelancerUid, projectId: await latestProjectId(prisma) });
     res.json({
       connected: true,
       remaining: q?.remaining ?? null,
+      unlimited: !!q?.unlimited,
       limit: q?.limit ?? null,
+      nextRefillAt: q?.nextRefillAt ?? null,
+      refreshRate: q?.refreshRate ?? null,
       source: q?.source ?? null,
       membership: q?.membership ?? null,
       fetchedAt: q?.fetchedAt ?? null,

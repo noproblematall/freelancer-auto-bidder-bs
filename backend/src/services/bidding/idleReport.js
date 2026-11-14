@@ -75,7 +75,8 @@ async function explainIdle(userId, { now = Date.now(), windowMs = IDLE_WINDOW_MS
       add('freelancer_bids_exhausted', 'Freelancer rejected the last bid: no bids left',
         `${quota.lastRejectionAt ? `At ${fmt(quota.lastRejectionAt)} ` : ''}Freelancer said "${quota.lastRejection || 'no bids left'}". It does not report how many bids are left, so the account is assumed empty for a while; bids refill over time. Meanwhile the automatic runs do not search Freelancer or call OpenAI${nextTry}; the Projects page's "Search Freelancer" button still works. If your Freelancer dashboard shows bids left, click the bids pill in the header to try again now.`);
     } else {
-      add('freelancer_bids_exhausted', 'Your Freelancer account has no bids left', `The membership allowance${quota.limit !== null ? ` of ${quota.limit}` : ''} is used up. Bids refill over time, or upgrade the membership on Freelancer.com. Meanwhile the automatic runs do not search Freelancer or call OpenAI${nextTry}; the Projects page's "Search Freelancer" button still works.`);
+      const refill = quota.nextRefillAt ? ` The next bid refills at ${fmt(quota.nextRefillAt)}.` : ' Bids refill over time.';
+      add('freelancer_bids_exhausted', 'Your Freelancer account has no bids left', `The membership allowance${quota.limit !== null ? ` of ${quota.limit}` : ''} is used up.${refill} Or upgrade the membership on Freelancer.com. Meanwhile the automatic runs do not search Freelancer or call OpenAI${nextTry}; the Projects page's "Search Freelancer" button still works.`);
     }
   }
   if (!user?.openaiApiKey) add('openai', 'No OpenAI API key is set', 'Add your key under Settings → OpenAI. Projects cannot be scored or written without it.');

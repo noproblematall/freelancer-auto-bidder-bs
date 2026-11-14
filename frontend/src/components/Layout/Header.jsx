@@ -41,9 +41,9 @@ const QUOTA_POLL_EVERY = 6 // quota is refreshed every 6th status poll (1 minute
 // Freelancer bids left on the account, shown next to the engine status.
 function BidQuotaPill({ quota, onRefresh }) {
   if (!quota || !quota.connected) return null
-  const { remaining, limit, source, exhaustedUntil, lastRejection, lastRejectionAt, keys } = quota
-  const unknown = remaining === null || remaining === undefined
-  const empty = !unknown && remaining <= 0
+  const { remaining, limit, unlimited, nextRefillAt, source, exhaustedUntil, lastRejection, lastRejectionAt, keys } = quota
+  const unknown = !unlimited && (remaining === null || remaining === undefined)
+  const empty = !unknown && !unlimited && remaining <= 0
   const assumed = empty && source === 'rejection' // 0 inferred from a rejected bid, not reported by Freelancer
   const low = !unknown && !empty && remaining <= 5
   const cls = empty
@@ -54,13 +54,16 @@ function BidQuotaPill({ quota, onRefresh }) {
   const nextTry = exhaustedUntil ? ` Next try at ${new Date(exhaustedUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.` : ''
   const fmt = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   const keyList = keys && keys.length ? `\n\nBid-related fields Freelancer returned: ${keys.join(', ')}` : ''
-  const title = assumed
-    ? `Freelancer rejected the last bid${lastRejectionAt ? ` at ${fmt(lastRejectionAt)}` : ''}${lastRejection ? ` saying "${lastRejection}"` : ''}. Freelancer does not report how many bids are left, so the account is assumed empty for a while; bids refill over time. Automatic runs do not search Freelancer or call OpenAI meanwhile; the Projects page's "Search Freelancer" button still works.${nextTry}\n\nIf your Freelancer dashboard shows bids left, click to try again now.${keyList}`
+  const refill = nextRefillAt ? ` Next bid refills at ${fmt(nextRefillAt)}.` : ''
+  const title = unlimited
+    ? 'Your Freelancer membership has unlimited bids. Click to re-check.'
+    : assumed
+    ? `Freelancer rejected the last bid${lastRejectionAt ? ` at ${fmt(lastRejectionAt)}` : ''}${lastRejection ? ` saying "${lastRejection}"` : ''}. Freelancer did not report how many bids are left, so the account is assumed empty for a while; bids refill over time. Automatic runs do not search Freelancer or call OpenAI meanwhile; the Projects page's "Search Freelancer" button still works.${nextTry}\n\nIf your Freelancer dashboard shows bids left, click to try again now.${keyList}`
     : empty
-    ? `Your Freelancer account has no bids left${lastRejection ? ` (Freelancer said: "${lastRejection}")` : ''}. Automatic runs do not search Freelancer or call OpenAI until bids refill or you upgrade the membership; the Projects page's "Search Freelancer" button still works.${nextTry}`
+    ? `Your Freelancer account has no bids left${limit !== null && limit !== undefined ? ` (membership allowance ${limit})` : ''}.${refill} Automatic runs do not search Freelancer or call OpenAI until bids refill or you upgrade the membership; the Projects page's "Search Freelancer" button still works.${nextTry}`
     : unknown
       ? `Freelancer did not report how many bids are left on the account, so bidding stops after the first "no bids left" rejection instead. Click to re-check.${keyList}`
-      : `Bids left on your Freelancer account${limit !== null && limit !== undefined ? ` (membership allowance ${limit})` : ''}. Click to re-check.`
+      : `Bids left on your Freelancer account${limit !== null && limit !== undefined ? ` (membership allowance ${limit})` : ''}.${refill} Click to re-check.`
   return (
     <button
       type="button"
@@ -71,9 +74,7 @@ function BidQuotaPill({ quota, onRefresh }) {
       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z" />
       </svg>
-      {assumed
-        ? `Bid rejected${lastRejectionAt ? ` ${fmt(lastRejectionAt)}` : ''}: no bids left? — click to retry`
-        : empty ? 'No Freelancer bids left' : unknown ? 'Bids left: ?' : `Bids left: ${remaining}${limit !== null && limit !== undefined ? ` / ${limit}` : ''}`}
+      {unlimited ? 'Bids: unlimited' : unknown ? 'Bids left: ?' : `Bids left: ${remaining}${limit !== null && limit !== undefined ? ` / ${limit}` : ''}`}
     </button>
   )
 }

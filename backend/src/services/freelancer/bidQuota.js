@@ -121,28 +121,104 @@ const BID_INFO_PATHS = ['/projects/0.1/projects/{id}/bidinfo/', '/projects/0.1/p
 const BID_INFO_RETRY_MS = 60 * 60 * 1000;
 let bidInfoPath = null;
 let bidInfoFailedAt = 0;
+let bidInfoLastError = null; // e.g. "HTTP 404", for the diagnostics entry
 
 async function fetchProjectBidInfo(client, projectId) {
-  if (!projectId) return null;
+  if (!projectId) { if (!bidInfoPath) bidInfoLastError = 'no project known yet to ask about'; return null; }
   if (!bidInfoPath && Date.now() - bidInfoFailedAt < BID_INFO_RETRY_MS) return null;
+  const errors = [];
   for (const p of bidInfoPath ? [bidInfoPath] : BID_INFO_PATHS) {
     try {
       const res = await client.get(p.replace('{id}', String(projectId)));
       const body = res.data?.result ?? res.data;
-      if (body && typeof body === 'object') { bidInfoPath = p; return body; }
+      if (body && typeof body === 'object') { bidInfoPath = p; bidInfoLastError = null; return body; }
+      errors.push(`${p}: empty reply`);
     } catch (err) {
       const status = err.response?.status;
+      const detail = err.response?.data?.message || err.response?.data?.error_code || err.message;
+      errors.push(`${p}: ${status ? `HTTP ${status}` : 'no response'} ${String(detail).slice(0, 80)}`);
       if (status && status !== 404) logger.warn(`Freelancer bid info (${p}): HTTP ${status} ${err.message}`);
     }
   }
   bidInfoFailedAt = Date.now();
+  bidInfoLastError = errors.join('; ');
   return null;
 }
 
+// For the diagnostics entry written when the count is unknown.
+function bidInfoStatus() {
+  return { path: bidInfoPath, lastError: bidInfoLastError, bidLimitError: bidLimitLastError };
+}
 
-// `projectId` (a Freelancer project id) lets the per-project bid info be
-// consulted as well.
-async function fetchBidQuota(client, { projectId = null } = {}) {
+
+// The endpoint Freelancer's own dashboard widget ("app-insights-bid-summary-
+// widget") reads the count from: a legacy "ajax-api" call, not part of the
+// documented REST API. The web app requests
+//   GET https://www.freelancer.com/ajax-api/projects/getBidLimit.php
+//       ?userId=<id>&compact=true&new_errors=true&new_pools=true
+// and gets { status, result: { userId, bidsRemaining, bidLimit,
+// bidsLastRefilled (s), bidRefreshTime (s), bidRefreshRate, unlimitedBids } }.
+// The web app authenticates with its own session header; whether the OAuth
+// header the app holds is accepted too is only known once it is tried, so a
+// failure here is recorded and the other sources are consulted.
+const BID_LIMIT_URL = 'https://www.freelancer.com/ajax-api/projects/getBidLimit.php';
+let bidLimitLastError = null;
+
+async function fetchBidLimit(client, freelancerUid) {
+  if (!freelancerUid) return null;
+  try {
+    const res = await client.get(BID_LIMIT_URL, {
+      params: { userId: freelancerUid, compact: 'true', new_errors: 'true', new_pools: 'true' },
+    });
+    const body = res.data;
+    if (!body || typeof body !== 'object' || body.status === 'error') {
+      bidLimitLastError = `getBidLimit: ${body?.message || body?.error_code || body?.status || 'empty reply'}`;
+      return null;
+    }
+    bidLimitLastError = null;
+    return body.result && typeof body.result === 'object' ? body.result : body;
+  } catch (err) {
+    const status = err.response?.status;
+    const detail = err.response?.data?.message || err.response?.data?.error_code || err.message;
+    bidLimitLastError = `getBidLimit: ${status ? `HTTP ${status}` : 'no response'} ${String(detail).slice(0, 80)}`;
+    logger.warn(`Freelancer getBidLimit: ${bidLimitLastError}`);
+    return null;
+  }
+}
+
+// `freelancerUid` lets the dashboard's bid-limit call be made; `projectId`
+// (a Freelancer project id) lets the per-project bid info be consulted.
+async function fetchBidQuota(client, { projectId = null, freelancerUid = null } = {}) {
+  const keys = [];
+  // 1. The dashboard widget's source.
+  const bl = await fetchBidLimit(client, freelancerUid);
+  if (bl) {
+    for (const k of bidKeyPaths(bl, '', [], 0, true)) keys.push(`getBidLimit.${k}`);
+    const remaining = toNumber(bl.bidsRemaining ?? bl.bids_remaining);
+    const unlimited = bl.unlimitedBids === true || bl.unlimited_bids === true;
+    if (remaining !== null || unlimited) {
+      const refilled = toNumber(bl.bidsLastRefilled ?? bl.bids_last_refilled);
+      const every = toNumber(bl.bidRefreshTime ?? bl.bid_refresh_time);
+      const quota = {
+        remaining: unlimited ? null : remaining,
+        unlimited,
+        limit: toNumber(bl.bidLimit ?? bl.bid_limit),
+        source: unlimited ? 'getBidLimit.unlimitedBids' : 'getBidLimit.bidsRemaining',
+        limitSource: 'getBidLimit.bidLimit',
+        refreshRate: toNumber(bl.bidRefreshRate ?? bl.bid_refresh_rate),
+        nextRefillAt: refilled && every ? (refilled + every) * 1000 : null,
+        membership: null,
+        keys,
+        fetchedAt: Date.now(),
+        exhaustedUntil: null,
+        error: null,
+      };
+      logger.info(`Freelancer bids left: ${unlimited ? 'unlimited' : `${quota.remaining}${quota.limit !== null ? ` of ${quota.limit}` : ''}`} (from getBidLimit)`);
+      return quota;
+    }
+  }
+
+  // 2. The documented self endpoint, searched for the usual names.
   const response = await client.get('/users/0.1/self/', {
     params: { membership_details: true, limited_account: true, bid_quality_details: true },
   });
@@ -151,7 +227,8 @@ async function fetchBidQuota(client, { projectId = null } = {}) {
     || findBenefit(result, /^(bids?_)?remaining(_bids?)?$|^bids?_left$|^bids?_balance$/i, ['remaining', 'value', 'count', 'amount']);
   let limit = findKey(result, LIMIT_KEYS)
     || findBenefit(result, /^bids?(_limit|_quota|_allowance|_count)?$|^(monthly_)?bid_limit$/i, VALUE_KEYS);
-  const keys = bidKeyPaths(result);
+  keys.push(...bidKeyPaths(result));
+  // 3. The per-project bid info.
   if (!remaining && projectId) {
     const info = await fetchProjectBidInfo(client, projectId);
     if (info) {
@@ -169,9 +246,12 @@ async function fetchBidQuota(client, { projectId = null } = {}) {
   }
   const quota = {
     remaining: toNumber(remaining?.value),
+    unlimited: false,
     limit: toNumber(limit?.value),
     source: remaining?.path || null,
     limitSource: limit?.path || null,
+    refreshRate: null,
+    nextRefillAt: null,
     membership: result.membership_package?.name || result.membership?.package?.name || null,
     keys,                       // bid-related key paths, for diagnosing an unknown count
     fetchedAt: Date.now(),
@@ -190,14 +270,14 @@ async function fetchBidQuota(client, { projectId = null } = {}) {
 // only the cache is consulted. `force` is the user clicking the bids pill:
 // it also ends a pause that came from a rejected bid, since bids refill over
 // time and the user can see the real count on their Freelancer dashboard.
-async function getBidQuota(userId, client, { force = false, projectId = null } = {}) {
+async function getBidQuota(userId, client, { force = false, projectId = null, freelancerUid = null } = {}) {
   const cached = cache.get(userId);
   const now = Date.now();
   if (!force && cached && cached.exhaustedUntil && cached.exhaustedUntil > now) return cached;
   if (!force && cached && now - cached.fetchedAt < CACHE_MS) return cached;
   if (!client) return cached || null;
   try {
-    const quota = await fetchBidQuota(client, { projectId });
+    const quota = await fetchBidQuota(client, { projectId, freelancerUid });
     // Freelancer not reporting the count says nothing about earlier
     // rejections, so the strike count carries over; a reported count resets
     // it, and so does the user asking for a fresh try.
@@ -300,4 +380,4 @@ async function latestProjectId(prisma) {
   } catch { return null; }
 }
 
-module.exports = { getBidQuota, getCachedBidQuota, markBidsExhausted, noteBidPlaced, restoreExhaustedFromDb, clearBidQuota, latestProjectId, isOutOfBidsError, fetchBidQuota, fetchProjectBidInfo, findKey, findBenefit, bidKeyPaths, CACHE_MS, EXHAUSTED_MS, EXHAUSTED_MAX_MS };
+module.exports = { getBidQuota, getCachedBidQuota, markBidsExhausted, noteBidPlaced, restoreExhaustedFromDb, clearBidQuota, latestProjectId, isOutOfBidsError, fetchBidQuota, fetchBidLimit, fetchProjectBidInfo, bidInfoStatus, BID_LIMIT_URL, findKey, findBenefit, bidKeyPaths, CACHE_MS, EXHAUSTED_MS, EXHAUSTED_MAX_MS };
