@@ -5,7 +5,7 @@ const flClient = require('../middleware/freelancerClient');
 const { placeBid, retractBid, MILESTONE_PERCENTAGE } = require('../services/freelancer/bids');
 const logger = require('../utils/logger');
 const { explainIdle } = require('../services/bidding/idleReport');
-const { getBidQuota, noteBidPlaced, markBidsExhausted, isOutOfBidsError, restoreExhaustedFromDb, latestProjectId } = require('../services/freelancer/bidQuota');
+const { getBidQuota, noteBidPlaced, markBidsExhausted, isOutOfBidsError, restoreExhaustedFromDb, latestProjectId, probeBidSources } = require('../services/freelancer/bidQuota');
 const { decrypt } = require('../utils/tokenManager');
 
 const router = express.Router();
@@ -27,6 +27,21 @@ const BID_PROJECT_INCLUDE = {
 router.get('/idle', async (req, res, next) => {
   try {
     res.json(await explainIdle(req.userId));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/bids/quota/probe — What each bid-count source answers, raw
+// (Settings → Freelancer → Bid allowance diagnostics). Must be before /:id.
+router.get('/quota/probe', async (req, res, next) => {
+  try {
+    const tokenRecord = await prisma.freelancerToken.findUnique({ where: { userId: req.userId } });
+    if (!tokenRecord) return res.json({ connected: false, results: [] });
+    const { createFreelancerClient } = require('../services/freelancer/client');
+    const client = createFreelancerClient(decrypt(tokenRecord.accessToken));
+    const results = await probeBidSources(client, { freelancerUid: tokenRecord.freelancerUid, projectId: await latestProjectId(prisma) });
+    res.json({ connected: true, freelancerUid: tokenRecord.freelancerUid || null, checkedAt: Date.now(), results });
   } catch (err) {
     next(err);
   }

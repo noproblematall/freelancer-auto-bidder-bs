@@ -372,6 +372,37 @@ function clearBidQuota(userId) {
   cache.delete(userId);
 }
 
+// Diagnostics: ask every source once, raw, and report what each answered
+// (HTTP status and the start of the body). Shown under Settings → Freelancer
+// so the exact reply can be read when the count is unknown.
+async function probeBidSources(client, { freelancerUid = null, projectId = null } = {}) {
+  const snippet = (v) => { try { return (typeof v === 'string' ? v : JSON.stringify(v)).slice(0, 400); } catch { return String(v).slice(0, 400); } };
+  const one = async (name, url, params) => {
+    const out = { name, url, params: params || null, status: null, ok: false, snippet: null, fields: [] };
+    try {
+      const res = await client.get(url, { params });
+      out.status = res.status;
+      out.ok = true;
+      out.snippet = snippet(res.data);
+      const body = res.data?.result && typeof res.data.result === 'object' ? res.data.result : res.data;
+      out.fields = body && typeof body === 'object' ? bidKeyPaths(body, '', [], 0, true).slice(0, 25) : [];
+    } catch (err) {
+      out.status = err.response?.status ?? null;
+      out.snippet = err.response ? snippet(err.response.data) : `no response: ${err.message}`;
+    }
+    return out;
+  };
+  const results = [];
+  results.push(freelancerUid
+    ? await one('dashboard getBidLimit (OAuth header)', BID_LIMIT_URL, { userId: freelancerUid, compact: 'true', new_errors: 'true', new_pools: 'true' })
+    : { name: 'dashboard getBidLimit', url: BID_LIMIT_URL, status: null, ok: false, snippet: 'skipped: the Freelancer user id is not stored; reconnect the account', fields: [] });
+  results.push(await one('self (membership details)', '/users/0.1/self/', { membership_details: true, limited_account: true, bid_quality_details: true }));
+  if (projectId) {
+    for (const p of BID_INFO_PATHS) results.push(await one(`project bid info ${p.includes('bids_info') ? 'bids_info' : 'bidinfo'}`, p.replace('{id}', String(projectId))));
+  }
+  return results;
+}
+
 // A recent active project id, for the per-project bid info probe.
 async function latestProjectId(prisma) {
   try {
@@ -380,4 +411,4 @@ async function latestProjectId(prisma) {
   } catch { return null; }
 }
 
-module.exports = { getBidQuota, getCachedBidQuota, markBidsExhausted, noteBidPlaced, restoreExhaustedFromDb, clearBidQuota, latestProjectId, isOutOfBidsError, fetchBidQuota, fetchBidLimit, fetchProjectBidInfo, bidInfoStatus, BID_LIMIT_URL, findKey, findBenefit, bidKeyPaths, CACHE_MS, EXHAUSTED_MS, EXHAUSTED_MAX_MS };
+module.exports = { getBidQuota, getCachedBidQuota, markBidsExhausted, noteBidPlaced, restoreExhaustedFromDb, clearBidQuota, latestProjectId, isOutOfBidsError, fetchBidQuota, fetchBidLimit, fetchProjectBidInfo, probeBidSources, bidInfoStatus, BID_LIMIT_URL, findKey, findBenefit, bidKeyPaths, CACHE_MS, EXHAUSTED_MS, EXHAUSTED_MAX_MS };

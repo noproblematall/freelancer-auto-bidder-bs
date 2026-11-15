@@ -85,6 +85,8 @@ export default function SettingsPage() {
   const [flCredsSaveMessage, setFlCredsSaveMessage] = useState(null)
   const [connecting, setConnecting] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
+  const [bidProbe, setBidProbe] = useState(null)       // raw answers of the bid-count sources
+  const [bidProbing, setBidProbing] = useState(false)
   const [callbackStatus, setCallbackStatus] = useState(null)
   const [callbackErrorReason, setCallbackErrorReason] = useState(null)
   const [schedulerStatus, setSchedulerStatus] = useState(null)
@@ -473,6 +475,19 @@ export default function SettingsPage() {
     }
   }
 
+  async function handleBidProbe() {
+    setBidProbing(true)
+    setBidProbe(null)
+    try {
+      const { data } = await api.get('/bids/quota/probe')
+      setBidProbe(data)
+    } catch (err) {
+      setBidProbe({ error: err.response?.data?.error || err.message })
+    } finally {
+      setBidProbing(false)
+    }
+  }
+
   async function handleDisconnect() {
     setDisconnecting(true)
     try {
@@ -822,6 +837,41 @@ export default function SettingsPage() {
                   >
                     {disconnecting ? 'Disconnecting...' : 'Disconnect Account'}
                   </button>
+
+                  {/* Bid allowance diagnostics: what each source answers, raw, for when the header shows "Bids left: ?" */}
+                  <div className="pt-2 border-t border-slate-200 dark:border-white/8">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-navy-950 dark:text-white">Bid allowance diagnostics</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">If the header shows "Bids left: ?", run this and send a screenshot of the result.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleBidProbe}
+                        disabled={bidProbing}
+                        className="shrink-0 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-navy-700 rounded-lg hover:bg-slate-200 dark:hover:bg-navy-600 transition-colors disabled:opacity-50"
+                      >
+                        {bidProbing ? 'Checking…' : 'Check bid count sources'}
+                      </button>
+                    </div>
+                    {bidProbe && (
+                      <div className="mt-3 space-y-2">
+                        {bidProbe.error && <p className="text-xs text-red-600 dark:text-red-400">{bidProbe.error}</p>}
+                        {bidProbe.freelancerUid === null && <p className="text-xs text-amber-600 dark:text-amber-400">The Freelancer user id is not stored — reconnect the account.</p>}
+                        {(bidProbe.results || []).map((r) => (
+                          <div key={r.name} className="p-2.5 rounded-lg bg-slate-50 dark:bg-navy-900/50 border border-slate-200 dark:border-white/8 text-xs">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium text-slate-800 dark:text-slate-100">{r.name}</span>
+                              <span className={r.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>HTTP {r.status ?? '—'}</span>
+                            </div>
+                            <div className="text-slate-500 dark:text-slate-400 break-all">{r.url}{r.params ? ' ' + JSON.stringify(r.params) : ''}</div>
+                            {r.fields && r.fields.length > 0 && <div className="text-slate-700 dark:text-slate-300 break-all">fields: {r.fields.join(', ')}</div>}
+                            <pre className="mt-1 whitespace-pre-wrap break-all text-slate-600 dark:text-slate-400">{r.snippet}</pre>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-4">

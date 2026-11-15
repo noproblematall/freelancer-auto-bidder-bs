@@ -46,6 +46,12 @@ export async function getBidQuota(refresh = false) {
   return data
 }
 
+// Raw answers of every bid-count source, for Settings → Freelancer diagnostics
+export async function probeBidQuota() {
+  const { data } = await api.get('/bids/quota/probe')
+  return data
+}
+
 // Why nothing has been bid in the last two hours (idle:false when something was)
 export async function getIdleReport() {
   const { data } = await api.get('/bids/idle')

@@ -28,6 +28,7 @@ async function runAllActiveProfiles() {
   // processing new ones. This ensures skipped-project logic doesn't block re-bidding
   // on projects whose pending bids were never actually placed.
   await cleanupStalePendingBids();
+  await pruneActivityLogs();
 
   // Check global schedule before processing
   const scheduleCheck = await checkGlobalSchedule();
@@ -328,6 +329,28 @@ async function cleanupStalePendingBids() {
   }
 }
 
+// Keep only the newest MAX_ACTIVITY_LOGS activity rows. The engine writes a
+// few rows a minute, so an unpruned log grows to hundreds of thousands of
+// rows within months and slows every page that reads it.
+const MAX_ACTIVITY_LOGS = 50000;
+const PRUNE_EVERY_MS = 60 * 60 * 1000;
+let lastPruneAt = 0;
+
+async function pruneActivityLogs(keep = MAX_ACTIVITY_LOGS, { force = false } = {}) {
+  if (!force && Date.now() - lastPruneAt < PRUNE_EVERY_MS) return 0;
+  lastPruneAt = Date.now();
+  try {
+    const edge = await prisma.activityLog.findFirst({ orderBy: { id: 'desc' }, skip: keep, select: { id: true } });
+    if (!edge) return 0;
+    const { count } = await prisma.activityLog.deleteMany({ where: { id: { lte: edge.id } } });
+    if (count > 0) logger.info(`Activity log: removed ${count} old row(s), keeping the newest ${keep}`);
+    return count;
+  } catch (err) {
+    logger.error(`Activity log prune failed: ${err.message}`);
+    return 0;
+  }
+}
+
 function start(cronExpression = '*/1 * * * *') {
   if (cronJob) {
     logger.warn('Scheduler: already running');
@@ -335,6 +358,7 @@ function start(cronExpression = '*/1 * * * *') {
   }
 
   cleanupStalePendingBids();
+  pruneActivityLogs(MAX_ACTIVITY_LOGS, { force: true });
   logger.info(`Scheduler: starting with cron "${cronExpression}"`);
   cronJob = cron.schedule(cronExpression, runAllActiveProfiles);
 
@@ -380,4 +404,4 @@ function getStatus() {
   };
 }
 
-module.exports = { start, stop, getStatus, runAllActiveProfiles };
+module.exports = { start, stop, getStatus, runAllActiveProfiles, pruneActivityLogs, MAX_ACTIVITY_LOGS };
