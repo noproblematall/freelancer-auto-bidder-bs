@@ -269,6 +269,68 @@ function registerLicenseIpc() {
   ipcMain.handle('app:openExternal', (_e, url) => {
     if (typeof url === 'string' && /^(https?:|mailto:)/.test(url)) shell.openExternal(url)
   })
+  ipcMain.handle('freelancer:webLogin', () => freelancerWebLogin())
+  ipcMain.handle('freelancer:webLogout', () => freelancerWebLogout())
+}
+
+// ─── Freelancer website sign-in (for the bid count) ──────────────────────────
+// Freelancer's dashboard reads "bids left" from an internal endpoint that only
+// the website session can call. A small window shows the real Freelancer.com
+// login page in its own persistent session; once the login cookies appear,
+// their values are handed to the backend (webSession.js) and the window
+// closes. Nothing else is read from that session.
+const FL_WEB_PARTITION = 'persist:freelancer-web'
+
+function freelancerWebLogin() {
+  const { session } = require('electron')
+  const ses = session.fromPartition(FL_WEB_PARTITION)
+  return new Promise((resolve) => {
+    let done = false
+    let timer = null
+    const win = new BrowserWindow({
+      width: 560,
+      height: 760,
+      parent: mainWindow || undefined,
+      title: 'Sign in to Freelancer.com',
+      autoHideMenuBar: true,
+      webPreferences: { session: ses, contextIsolation: true, nodeIntegration: false, sandbox: true },
+    })
+    const finish = (result) => {
+      if (done) return
+      done = true
+      if (timer) clearInterval(timer)
+      try { if (!win.isDestroyed()) win.close() } catch (_) {}
+      resolve(result)
+    }
+    const check = async () => {
+      if (done) return
+      try {
+        const cookies = await ses.cookies.get({ url: 'https://www.freelancer.com' })
+        const uid = cookies.find((c) => c.name === 'GETAFREE_USER_ID')?.value
+        const hash = cookies.find((c) => c.name === 'GETAFREE_AUTH_HASH_V2')?.value
+        if (uid && hash) {
+          require('../backend/src/services/freelancer/webSession').save({ userId: uid, hash })
+          try { require('../backend/src/services/freelancer/bidQuota').clearAllBidQuota() } catch (_) {}
+          finish({ ok: true, userId: uid })
+        }
+      } catch (err) {
+        console.warn('[BidPilot] Freelancer web sign-in check failed:', err.message)
+      }
+    }
+    win.on('closed', () => finish({ ok: false, canceled: true }))
+    win.webContents.on('did-navigate', check)
+    win.webContents.on('did-navigate-in-page', check)
+    timer = setInterval(check, 1500)
+    win.loadURL('https://www.freelancer.com/login').catch((err) => finish({ ok: false, error: err.message }))
+  })
+}
+
+async function freelancerWebLogout() {
+  const { session } = require('electron')
+  try { await session.fromPartition(FL_WEB_PARTITION).clearStorageData() } catch (_) {}
+  try { require('../backend/src/services/freelancer/webSession').clear() } catch (_) {}
+  try { require('../backend/src/services/freelancer/bidQuota').clearAllBidQuota() } catch (_) {}
+  return { ok: true }
 }
 
 // ─── App lifecycle ────────────────────────────────────────────────────────────

@@ -12,7 +12,7 @@
 // when a bid is rejected.
 const logger = require('../../utils/logger');
 
-const CACHE_MS = 10 * 60 * 1000;         // re-read the allowance every 10 minutes
+const CACHE_MS = 5 * 60 * 1000;          // re-read the allowance every 5 minutes (and right after each bid)
 const EXHAUSTED_MS = 60 * 60 * 1000;     // after a rejected bid, wait an hour before trying again
 const EXHAUSTED_MAX_MS = 6 * 60 * 60 * 1000; // repeated rejections back off up to 6 hours
 
@@ -162,28 +162,60 @@ function bidInfoStatus() {
 // header the app holds is accepted too is only known once it is tried, so a
 // failure here is recorded and the other sources are consulted.
 const BID_LIMIT_URL = 'https://www.freelancer.com/ajax-api/projects/getBidLimit.php';
+const OAUTH_REFUSED_RETRY_MS = 24 * 60 * 60 * 1000; // once the API token is refused, do not retry it for a day
 let bidLimitLastError = null;
+let oauthRefusedAt = 0;
+let lastBidLimitVia = null; // 'api-token' | 'website' — which credential answered last
 
-async function fetchBidLimit(client, freelancerUid) {
-  if (!freelancerUid) return null;
+function bidLimitParams(freelancerUid) {
+  return { userId: freelancerUid, compact: 'true', new_errors: 'true', new_pools: 'true' };
+}
+
+// One getBidLimit request. Returns { body } or { error, status }.
+async function requestBidLimit(doGet, label) {
   try {
-    const res = await client.get(BID_LIMIT_URL, {
-      params: { userId: freelancerUid, compact: 'true', new_errors: 'true', new_pools: 'true' },
-    });
+    const res = await doGet();
     const body = res.data;
     if (!body || typeof body !== 'object' || body.status === 'error') {
-      bidLimitLastError = `getBidLimit: ${body?.message || body?.error_code || body?.status || 'empty reply'}`;
-      return null;
+      return { error: `${label}: ${body?.message || body?.error_code || body?.status || (typeof body === 'string' ? 'non-JSON reply' : 'empty reply')}` };
     }
-    bidLimitLastError = null;
-    return body.result && typeof body.result === 'object' ? body.result : body;
+    return { body: body.result && typeof body.result === 'object' ? body.result : body };
   } catch (err) {
     const status = err.response?.status;
     const detail = err.response?.data?.message || err.response?.data?.error_code || err.message;
-    bidLimitLastError = `getBidLimit: ${status ? `HTTP ${status}` : 'no response'} ${String(detail).slice(0, 80)}`;
-    logger.warn(`Freelancer getBidLimit: ${bidLimitLastError}`);
-    return null;
+    return { status, error: `${label}: ${status ? `HTTP ${status}` : 'no response'} ${String(detail).slice(0, 80)}` };
   }
+}
+
+// The API token is tried first; the website session (webSession.js) is
+// used when the token is refused or no session-free source has the count.
+async function fetchBidLimit(client, freelancerUid) {
+  const errors = [];
+  const params = bidLimitParams(freelancerUid);
+  if (freelancerUid && Date.now() - oauthRefusedAt > OAUTH_REFUSED_RETRY_MS) {
+    const r = await requestBidLimit(() => client.get(BID_LIMIT_URL, { params }), 'getBidLimit with the API token');
+    if (r.body) { bidLimitLastError = null; lastBidLimitVia = 'api-token'; return r.body; }
+    if (r.status === 401 || r.status === 403) oauthRefusedAt = Date.now();
+    errors.push(r.error);
+  } else if (!freelancerUid) {
+    errors.push('getBidLimit with the API token: skipped, no Freelancer user id stored');
+  } else {
+    errors.push('getBidLimit with the API token: skipped, refused earlier today');
+  }
+  const webSession = require('./webSession');
+  const web = webSession.load();
+  if (web) {
+    const axios = require('axios');
+    const r = await requestBidLimit(() => axios.get(BID_LIMIT_URL, { params: bidLimitParams(web.userId), headers: webSession.headers(), timeout: 15000 }), 'getBidLimit with the website session');
+    if (r.body) { bidLimitLastError = null; lastBidLimitVia = 'website'; return r.body; }
+    if (r.status === 401 || r.status === 403) webSession.markInvalid();
+    errors.push(r.error);
+  } else {
+    errors.push('getBidLimit with the website session: no website sign-in yet');
+  }
+  bidLimitLastError = errors.join('; ');
+  logger.warn(`Freelancer bid count: ${bidLimitLastError}`);
+  return null;
 }
 
 // `freelancerUid` lets the dashboard's bid-limit call be made; `projectId`
@@ -204,6 +236,7 @@ async function fetchBidQuota(client, { projectId = null, freelancerUid = null } 
         unlimited,
         limit: toNumber(bl.bidLimit ?? bl.bid_limit),
         source: unlimited ? 'getBidLimit.unlimitedBids' : 'getBidLimit.bidsRemaining',
+        via: lastBidLimitVia,
         limitSource: 'getBidLimit.bidLimit',
         refreshRate: toNumber(bl.bidRefreshRate ?? bl.bid_refresh_rate),
         nextRefillAt: refilled && every ? (refilled + every) * 1000 : null,
@@ -332,9 +365,16 @@ function noteBidPlaced(userId) {
   if (!q) return;
   if (typeof q.remaining === 'number' && q.remaining > 0) q.remaining -= 1;
   // A zero that came from a rejection is stale now; read it again next time.
-  if (q.source === 'rejection' && q.remaining === 0) { q.remaining = null; q.source = null; q.fetchedAt = 0; }
+  if (q.source === 'rejection' && q.remaining === 0) { q.remaining = null; q.source = null; }
+  // Re-read Freelancer's own number on the next check so the count stays in
+  // step with the account (refills, bids placed elsewhere).
+  q.fetchedAt = 0;
   q.rejections = 0;
   q.exhaustedUntil = null;
+}
+
+function clearAllBidQuota() {
+  cache.clear();
 }
 
 // After a restart the in-memory cache is empty, so a recent "no bids left"
@@ -394,8 +434,19 @@ async function probeBidSources(client, { freelancerUid = null, projectId = null 
   };
   const results = [];
   results.push(freelancerUid
-    ? await one('dashboard getBidLimit (OAuth header)', BID_LIMIT_URL, { userId: freelancerUid, compact: 'true', new_errors: 'true', new_pools: 'true' })
-    : { name: 'dashboard getBidLimit', url: BID_LIMIT_URL, status: null, ok: false, snippet: 'skipped: the Freelancer user id is not stored; reconnect the account', fields: [] });
+    ? await one('dashboard getBidLimit (API token)', BID_LIMIT_URL, bidLimitParams(freelancerUid))
+    : { name: 'dashboard getBidLimit (API token)', url: BID_LIMIT_URL, status: null, ok: false, snippet: 'skipped: the Freelancer user id is not stored; reconnect the account', fields: [] });
+  const webSession = require('./webSession');
+  const web = webSession.load();
+  if (web) {
+    const axios = require('axios');
+    const webClient = { get: (url, opts) => axios.get(url, { ...opts, headers: webSession.headers(), timeout: 15000 }) };
+    const saved = client; client = webClient;
+    results.push(await one('dashboard getBidLimit (website session)', BID_LIMIT_URL, bidLimitParams(web.userId)));
+    client = saved;
+  } else {
+    results.push({ name: 'dashboard getBidLimit (website session)', url: BID_LIMIT_URL, status: null, ok: false, snippet: 'skipped: not signed in to Freelancer.com inside the app yet', fields: [] });
+  }
   results.push(await one('self (membership details)', '/users/0.1/self/', { membership_details: true, limited_account: true, bid_quality_details: true }));
   if (projectId) {
     for (const p of BID_INFO_PATHS) results.push(await one(`project bid info ${p.includes('bids_info') ? 'bids_info' : 'bidinfo'}`, p.replace('{id}', String(projectId))));
@@ -411,4 +462,4 @@ async function latestProjectId(prisma) {
   } catch { return null; }
 }
 
-module.exports = { getBidQuota, getCachedBidQuota, markBidsExhausted, noteBidPlaced, restoreExhaustedFromDb, clearBidQuota, latestProjectId, isOutOfBidsError, fetchBidQuota, fetchBidLimit, fetchProjectBidInfo, probeBidSources, bidInfoStatus, BID_LIMIT_URL, findKey, findBenefit, bidKeyPaths, CACHE_MS, EXHAUSTED_MS, EXHAUSTED_MAX_MS };
+module.exports = { getBidQuota, getCachedBidQuota, markBidsExhausted, noteBidPlaced, restoreExhaustedFromDb, clearBidQuota, clearAllBidQuota, latestProjectId, isOutOfBidsError, fetchBidQuota, fetchBidLimit, fetchProjectBidInfo, probeBidSources, bidInfoStatus, BID_LIMIT_URL, findKey, findBenefit, bidKeyPaths, CACHE_MS, EXHAUSTED_MS, EXHAUSTED_MAX_MS };

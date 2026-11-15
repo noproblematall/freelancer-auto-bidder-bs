@@ -41,8 +41,10 @@ const QUOTA_POLL_EVERY = 6 // quota is refreshed every 6th status poll (1 minute
 // Freelancer bids left on the account, shown next to the engine status.
 function BidQuotaPill({ quota, onRefresh }) {
   if (!quota || !quota.connected) return null
-  const { remaining, limit, unlimited, nextRefillAt, source, exhaustedUntil, lastRejection, lastRejectionAt, keys } = quota
+  const { remaining, limit, unlimited, nextRefillAt, source, exhaustedUntil, lastRejection, lastRejectionAt, keys, needsWebLogin, webSession } = quota
   const unknown = !unlimited && (remaining === null || remaining === undefined)
+  const canWebLogin = typeof window !== 'undefined' && !!window.electron?.freelancer
+  const signIn = unknown && needsWebLogin && canWebLogin
   const empty = !unknown && !unlimited && remaining <= 0
   const assumed = empty && source === 'rejection' // 0 inferred from a rejected bid, not reported by Freelancer
   const low = !unknown && !empty && remaining <= 5
@@ -55,7 +57,9 @@ function BidQuotaPill({ quota, onRefresh }) {
   const fmt = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   const keyList = keys && keys.length ? `\n\nBid-related fields Freelancer returned: ${keys.join(', ')}` : ''
   const refill = nextRefillAt ? ` Next bid refills at ${fmt(nextRefillAt)}.` : ''
-  const title = unlimited
+  const title = signIn
+    ? `${webSession?.invalid ? 'Your Freelancer.com sign-in has expired.' : 'Freelancer reports the number of bids left only to its website, not through the API.'} Click to sign in to Freelancer.com inside BidPilot (once); the count is then read the same way your Freelancer dashboard shows it.`
+    : unlimited
     ? 'Your Freelancer membership has unlimited bids. Click to re-check.'
     : assumed
     ? `Freelancer rejected the last bid${lastRejectionAt ? ` at ${fmt(lastRejectionAt)}` : ''}${lastRejection ? ` saying "${lastRejection}"` : ''}. Freelancer did not report how many bids are left, so the account is assumed empty for a while; bids refill over time. Automatic runs do not search Freelancer or call OpenAI meanwhile; the Projects page's "Search Freelancer" button still works.${nextTry}\n\nIf your Freelancer dashboard shows bids left, click to try again now.${keyList}`
@@ -67,14 +71,14 @@ function BidQuotaPill({ quota, onRefresh }) {
   return (
     <button
       type="button"
-      onClick={onRefresh}
+      onClick={signIn ? () => window.electron.freelancer.webLogin().then((r) => { if (r?.ok) onRefresh() }).catch(() => {}) : onRefresh}
       title={title}
-      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${cls}`}
+      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${signIn ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-700' : cls}`}
     >
       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z" />
       </svg>
-      {unlimited ? 'Bids: unlimited' : unknown ? 'Bids left: ?' : `Bids left: ${remaining}${limit !== null && limit !== undefined ? ` / ${limit}` : ''}`}
+      {signIn ? 'Bids left: sign in to Freelancer' : unlimited ? 'Bids: unlimited' : unknown ? 'Bids left: ?' : `Bids left: ${remaining}${limit !== null && limit !== undefined ? ` / ${limit}` : ''}`}
     </button>
   )
 }

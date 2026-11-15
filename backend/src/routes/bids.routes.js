@@ -47,6 +47,17 @@ router.get('/quota/probe', async (req, res, next) => {
   }
 });
 
+// DELETE /api/bids/quota/web-session — forget the Freelancer website session.
+router.delete('/quota/web-session', async (req, res, next) => {
+  try {
+    require('../services/freelancer/webSession').clear();
+    require('../services/freelancer/bidQuota').clearAllBidQuota();
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/bids/quota — Bids left on the Freelancer account (must be before /:id).
 // { remaining, limit, membership, fetchedAt }; remaining is null when Freelancer
 // does not report it, and `source` is 'rejection' when the 0 is assumed from a
@@ -64,10 +75,16 @@ router.get('/quota', async (req, res, next) => {
       await prisma.activityLog.create({ data: { userId: req.userId, action: 'bid_quota_retry', details: JSON.stringify({ message: 'Bid allowance re-checked by hand; the pause after a rejected bid was ended.' }) } }).catch(() => {});
     }
     const q = await getBidQuota(req.userId, client, { force, freelancerUid: tokenRecord.freelancerUid, projectId: await latestProjectId(prisma) });
+    const webSession = require('../services/freelancer/webSession').status();
+    const unknown = !q || (q.remaining === null && !q.unlimited);
     res.json({
       connected: true,
       remaining: q?.remaining ?? null,
       unlimited: !!q?.unlimited,
+      via: q?.via ?? null,                  // 'api-token' | 'website' when the count came from getBidLimit
+      webSession,                           // { present, savedAt, invalid }
+      // The count is unknown and the website session is what would provide it.
+      needsWebLogin: unknown && (!webSession.present || webSession.invalid),
       limit: q?.limit ?? null,
       nextRefillAt: q?.nextRefillAt ?? null,
       refreshRate: q?.refreshRate ?? null,

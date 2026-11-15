@@ -87,6 +87,33 @@ export default function SettingsPage() {
   const [disconnecting, setDisconnecting] = useState(false)
   const [bidProbe, setBidProbe] = useState(null)       // raw answers of the bid-count sources
   const [bidProbing, setBidProbing] = useState(false)
+  const [bidQuota, setBidQuota] = useState(null)       // { remaining, via, webSession, needsWebLogin }
+  const [webLoginBusy, setWebLoginBusy] = useState(false)
+  const canWebLogin = typeof window !== 'undefined' && !!window.electron?.freelancer
+
+  const loadBidQuota = () => api.get('/bids/quota').then((r) => setBidQuota(r.data)).catch(() => {})
+  useEffect(() => { if (freelancer?.connected) loadBidQuota() }, [freelancer?.connected])
+
+  async function handleWebLogin() {
+    setWebLoginBusy(true)
+    try {
+      const r = await window.electron.freelancer.webLogin()
+      if (r?.ok) await api.get('/bids/quota', { params: { refresh: 1 } }).then((res) => setBidQuota(res.data)).catch(() => {})
+    } finally {
+      setWebLoginBusy(false)
+    }
+  }
+
+  async function handleWebLogout() {
+    setWebLoginBusy(true)
+    try {
+      await window.electron.freelancer.webLogout()
+      await api.delete('/bids/quota/web-session').catch(() => {})
+      await loadBidQuota()
+    } finally {
+      setWebLoginBusy(false)
+    }
+  }
   const [callbackStatus, setCallbackStatus] = useState(null)
   const [callbackErrorReason, setCallbackErrorReason] = useState(null)
   const [schedulerStatus, setSchedulerStatus] = useState(null)
@@ -837,6 +864,39 @@ export default function SettingsPage() {
                   >
                     {disconnecting ? 'Disconnecting...' : 'Disconnect Account'}
                   </button>
+
+                  {/* Bid count: Freelancer reports it only to its website, so a one-time website sign-in inside the app provides it */}
+                  <div className="pt-2 border-t border-slate-200 dark:border-white/8">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-navy-950 dark:text-white">Bids left on Freelancer</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {bidQuota == null
+                            ? 'Checking…'
+                            : bidQuota.unlimited
+                              ? 'Unlimited bids on this membership.'
+                              : bidQuota.remaining != null
+                                ? `${bidQuota.remaining}${bidQuota.limit != null ? ` of ${bidQuota.limit}` : ''} bids left${bidQuota.via === 'website' ? ' (read through your Freelancer.com sign-in)' : bidQuota.via === 'api-token' ? ' (read through the API connection)' : ''}.`
+                                : bidQuota.webSession?.invalid
+                                  ? 'Your Freelancer.com sign-in has expired — sign in again to read the count.'
+                                  : bidQuota.webSession?.present
+                                    ? 'Signed in to Freelancer.com, but no count was returned — run the diagnostics below.'
+                                    : 'Freelancer reports this number only to its website, not through the API. Sign in to Freelancer.com once, inside BidPilot, and the count is read the way your dashboard shows it.'}
+                        </p>
+                      </div>
+                      {canWebLogin && (
+                        bidQuota?.webSession?.present && !bidQuota?.webSession?.invalid ? (
+                          <button type="button" onClick={handleWebLogout} disabled={webLoginBusy} className="shrink-0 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-navy-700 rounded-lg hover:bg-slate-200 dark:hover:bg-navy-600 transition-colors disabled:opacity-50">
+                            {webLoginBusy ? '…' : 'Sign out of Freelancer.com'}
+                          </button>
+                        ) : (
+                          <button type="button" onClick={handleWebLogin} disabled={webLoginBusy} className="shrink-0 px-3 py-1.5 text-xs font-medium text-navy-950 bg-emerald-400 rounded-lg hover:bg-emerald-500 transition-colors shadow-sm disabled:opacity-50">
+                            {webLoginBusy ? 'Waiting for sign-in…' : 'Sign in to Freelancer.com'}
+                          </button>
+                        )
+                      )}
+                    </div>
+                  </div>
 
                   {/* Bid allowance diagnostics: what each source answers, raw, for when the header shows "Bids left: ?" */}
                   <div className="pt-2 border-t border-slate-200 dark:border-white/8">

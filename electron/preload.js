@@ -17,6 +17,12 @@ contextBridge.exposeInMainWorld('electron', {
     relaunch: () => ipcRenderer.invoke('app:relaunch'),
     openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
   },
+  freelancer: {
+    // Opens the Freelancer.com login page in a small window; resolves
+    // { ok, userId } once signed in, or { ok:false, canceled:true }.
+    webLogin: () => ipcRenderer.invoke('freelancer:webLogin'),
+    webLogout: () => ipcRenderer.invoke('freelancer:webLogout'),
+  },
   update: {
     status: () => ipcRenderer.invoke('update:status'),
     check: () => ipcRenderer.invoke('update:check'),
