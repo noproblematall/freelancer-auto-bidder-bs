@@ -129,6 +129,16 @@ router.get('/stats', async (req, res, next) => {
       prisma.bid.count({ where: { ...where, status: 'pending_review' } }),
     ]);
 
+    // Last 24 hours only (the Bid History tiles): everything the engine did today.
+    const dayWhere = { userId: req.userId, createdAt: { gte: last24Hours } };
+    const [dayTotal, dayPlaced, dayErrored, dayPendingReview] = await Promise.all([
+      prisma.bid.count({ where: dayWhere }),
+      prisma.bid.count({ where: { ...dayWhere, status: { in: ['placed', 'converted', 'rejected', 'retracted'] } } }),
+      prisma.bid.count({ where: { ...dayWhere, status: 'error' } }),
+      prisma.bid.count({ where: { ...dayWhere, status: 'pending_review' } }),
+    ]);
+    const today = { total: dayTotal, placed: dayPlaced, errored: dayErrored, pendingReview: dayPendingReview, lastHour: thisHour };
+
     // Account-wide rate-limit usage so the frontend can show warnings.
     // Mirror the engine's cap accounting: queued review drafts count too.
     const caps = await prisma.user.findUnique({
@@ -150,7 +160,7 @@ router.get('/stats', async (req, res, next) => {
       daily: { used: dayCount, limit: caps.maxBidsPerDay, atLimit: dayCount >= caps.maxBidsPerDay },
     };
 
-    res.json({ total, placed, converted, rejected, retracted, errored, last24h, thisHour, pendingReview, limits });
+    res.json({ total, placed, converted, rejected, retracted, errored, last24h, thisHour, pendingReview, today, limits });
   } catch (err) {
     next(err);
   }

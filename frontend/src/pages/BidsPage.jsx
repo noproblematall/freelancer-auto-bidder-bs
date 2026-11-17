@@ -418,15 +418,14 @@ export default function BidsPage() {
 
       {/* Stats Bar */}
       {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { label: 'Total', value: stats.total, color: 'text-navy-950', darkColor: 'dark:text-emerald-400' },
-            { label: 'Placed', value: stats.placed, color: 'text-blue-700', darkColor: 'dark:text-emerald-400' },
-            { label: 'Last Hour', value: stats.thisHour, color: 'text-indigo-700', darkColor: 'dark:text-emerald-400' },
-            { label: 'Last 24h', value: stats.last24h, color: 'text-violet-700', darkColor: 'dark:text-emerald-400' },
-            { label: 'Errors', value: stats.errored, color: 'text-red-600', darkColor: 'dark:text-red-400' },
+            { label: 'Total (24h)', value: stats.today?.total ?? stats.last24h, title: 'Bids the engine handled in the last 24 hours (placed, drafts and errors)', color: 'text-navy-950', darkColor: 'dark:text-emerald-400' },
+            { label: 'Placed (24h)', value: stats.today?.placed ?? stats.last24h, title: 'Bids placed on Freelancer in the last 24 hours', color: 'text-blue-700', darkColor: 'dark:text-emerald-400' },
+            { label: 'Last Hour', value: stats.today?.lastHour ?? stats.thisHour, title: 'Bids placed in the last 60 minutes', color: 'text-indigo-700', darkColor: 'dark:text-emerald-400' },
+            { label: 'Errors (24h)', value: stats.today?.errored ?? 0, title: 'Bids that failed in the last 24 hours', color: 'text-red-600', darkColor: 'dark:text-red-400' },
           ].map((s) => (
-            <div key={s.label} className="bg-white dark:bg-navy-800/90 rounded-xl border border-slate-200 dark:border-white/6 shadow-lg dark:shadow-2xl dark:shadow-black/50 px-4 py-3">
+            <div key={s.label} title={s.title} className="bg-white dark:bg-navy-800/90 rounded-xl border border-slate-200 dark:border-white/6 shadow-lg dark:shadow-2xl dark:shadow-black/50 px-4 py-3">
               <p className="text-xs font-medium text-slate-700 dark:text-slate-200">{s.label}</p>
               <p className={`text-xl font-semibold ${s.color} ${s.darkColor}`}>{s.value}</p>
             </div>
