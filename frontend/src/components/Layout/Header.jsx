@@ -36,7 +36,7 @@ const BADGE = {
 }
 
 const POLL_INTERVAL = 10000
-const QUOTA_POLL_EVERY = 6 // quota is refreshed every 6th status poll (1 minute)
+const QUOTA_POLL_EVERY = 2 // quota is refreshed every 2nd status poll (20 s), so the pill follows each bid placed
 
 // Freelancer bids left on the account, shown next to the engine status.
 function BidQuotaPill({ quota, onRefresh }) {
@@ -116,6 +116,7 @@ export default function Header() {
         clearInterval(pollRef.current)
         pollRef.current = null
       } else if (!pollRef.current) {
+        tickRef.current = 0 // back in view: re-read the bid count straight away
         poll()
         pollRef.current = setInterval(poll, POLL_INTERVAL)
       }

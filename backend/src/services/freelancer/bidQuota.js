@@ -319,6 +319,7 @@ async function getBidQuota(userId, client, { force = false, projectId = null, fr
       quota.lastRejection = cached.lastRejection;
       quota.lastRejectionAt = cached.lastRejectionAt;
     }
+    reconcile(quota, cached);
     cache.set(userId, quota);
     return quota;
   } catch (err) {
@@ -358,19 +359,38 @@ function markBidsExhausted(userId, message, { at = Date.now() } = {}) {
   });
 }
 
-// A bid went through: count it down so the cache stays honest between reads,
-// and forget earlier rejections — the allowance has clearly refilled.
+// A bid went through: count it down at once so the pill moves with every bid,
+// and forget earlier rejections — the allowance has clearly refilled. The
+// count is re-read from Freelancer on the normal cache cycle; see reconcile().
 function noteBidPlaced(userId) {
   const q = cache.get(userId);
   if (!q) return;
-  if (typeof q.remaining === 'number' && q.remaining > 0) q.remaining -= 1;
+  if (typeof q.remaining === 'number') {
+    if (q.remaining > 0) q.remaining -= 1;
+    q.placedSinceSync = (q.placedSinceSync || 0) + 1;
+  }
   // A zero that came from a rejection is stale now; read it again next time.
-  if (q.source === 'rejection' && q.remaining === 0) { q.remaining = null; q.source = null; }
-  // Re-read Freelancer's own number on the next check so the count stays in
-  // step with the account (refills, bids placed elsewhere).
-  q.fetchedAt = 0;
+  if (q.source === 'rejection' && q.remaining === 0) { q.remaining = null; q.source = null; q.fetchedAt = 0; }
   q.rejections = 0;
   q.exhaustedUntil = null;
+}
+
+// A fresh read from Freelancer is the truth — except that its count can lag a
+// few minutes behind bids just placed. While the number Freelancer reports is
+// the same one it reported before those bids, keep counting them off locally;
+// as soon as it moves (it caught up, a bid refilled, bids were placed
+// elsewhere), take it as is.
+function reconcile(fresh, cached) {
+  const pending = cached?.placedSinceSync || 0;
+  const lastServer = cached?.serverRemaining;
+  fresh.serverRemaining = fresh.remaining;
+  fresh.placedSinceSync = 0;
+  if (typeof fresh.remaining !== 'number' || !pending) return fresh;
+  if (typeof lastServer === 'number' && fresh.remaining === lastServer) {
+    fresh.remaining = Math.max(0, fresh.remaining - pending);
+    fresh.placedSinceSync = pending;
+  }
+  return fresh;
 }
 
 function clearAllBidQuota() {
