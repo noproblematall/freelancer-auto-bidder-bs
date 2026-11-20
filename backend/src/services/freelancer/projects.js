@@ -69,6 +69,29 @@ async function getProjectsByIds(client, projectIds) {
   return response.data?.result?.projects || [];
 }
 
+// A client's posted projects (any status), newest first, with their selected
+// (awarded) bids and skills: the client explorer's project history.
+async function getProjectsByOwner(client, ownerId, { limit = 40, offset = 0 } = {}) {
+  const response = await client.get('/projects/0.1/projects/', {
+    params: {
+      'owners[]': [ownerId], limit, offset,
+      sort_field: 'time_submitted', reverse_sort: false,
+      selected_bids: true, job_details: true, full_description: false,
+    },
+  });
+  const result = response.data?.result || {};
+  return { projects: result.projects || [], totalCount: result.total_count || null };
+}
+
+// One Freelancer user with employer reputation and verifications.
+async function getEmployer(client, userId) {
+  const response = await client.get('/users/0.1/users/', {
+    params: { 'users[]': [userId], employer_reputation: true, status: true, country_details: true, display_info: true, avatar: true, location_details: true },
+  });
+  const users = response.data?.result?.users || {};
+  return users[String(userId)] || null;
+}
+
 async function getJobs(client, jobIds = null) {
   const params = { seo_details: false, lang: 'en' };
   if (jobIds && jobIds.length) params['job_ids[]'] = jobIds;
@@ -77,4 +100,4 @@ async function getJobs(client, jobIds = null) {
   return response.data.result;
 }
 
-module.exports = { searchProjects, getProjectById, getProjectsByIds, getJobs };
+module.exports = { searchProjects, getProjectById, getProjectsByIds, getProjectsByOwner, getEmployer, getJobs };

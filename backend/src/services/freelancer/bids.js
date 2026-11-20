@@ -52,6 +52,20 @@ async function getMyBidsForProjects(client, { bidderId, projectIds }) {
   return response.data?.result?.bids || [];
 }
 
+// Every bid on a project with the bidders' details (reputation, country,
+// hourly rate), for the winning-bid study and the client explorer. Bid text is
+// public on Freelancer unless the bid was sealed.
+async function getProjectBids(client, projectId, { limit = 200 } = {}) {
+  const response = await client.get('/projects/0.1/bids/', {
+    params: {
+      'projects[]': [projectId], limit,
+      user_details: true, user_reputation: true, user_country_details: true, user_status: true, user_display_info: true,
+    },
+  });
+  const result = response.data?.result || {};
+  return { bids: result.bids || [], users: result.users || {} };
+}
+
 // Attempt to seal a previously-placed bid via PUT ?action=seal (mirrors the
 // documented `action=highlight` / `action=sponsor` upgrade pattern). The
 // action isn't in the documented enum, so callers must verify by re-reading
@@ -98,4 +112,4 @@ async function retractBid(client, freelancerBidId) {
   return response.data;
 }
 
-module.exports = { MILESTONE_PERCENTAGE, placeBid, getBids, getMyBidsForProjects, retractBid, sealBid, getBidById };
+module.exports = { MILESTONE_PERCENTAGE, placeBid, getBids, getMyBidsForProjects, getProjectBids, retractBid, sealBid, getBidById };

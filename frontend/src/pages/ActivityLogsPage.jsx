@@ -43,6 +43,8 @@ const ACTION_COLORS = {
   bid_quota_retry: 'bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-400',
   bid_quota_fields: 'bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-400',
   ai_analytics_report: 'bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400',
+  ai_winning_bids_study: 'bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400',
+  ai_client_study: 'bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400',
   bid_awarded: 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400',
   bid_lost: 'bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300',
   follow_up_sent: 'bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-400',
@@ -70,6 +72,8 @@ const ACTION_LABELS = {
   bid_quota_retry: 'Bid Allowance Re-checked by Hand',
   bid_quota_fields: 'Freelancer Bid Count Not Reported (fields seen)',
   ai_analytics_report: 'AI Analytics Review',
+  ai_winning_bids_study: 'AI Winning-Bid Study',
+  ai_client_study: 'AI Client Study',
   bid_cap_reached: 'Bid Limit Reached',
   bid_placed: 'Bid Placed',
   bid_placed_manual: 'Bid Approved & Placed',
@@ -181,7 +185,7 @@ export default function ActivityLogsPage() {
     }
 
     // Operational problems: render the human message, never a JSON blob
-    if (['scheduler_auto_paused', 'openai_stall_detected', 'openai_not_configured', 'token_refresh_failed', 'freelancer_not_connected', 'project_search_failed', 'bid_cap_reached', 'freelancer_bids_exhausted', 'bid_quota_retry', 'bid_quota_fields', 'ai_analytics_report'].includes(log.action)) {
+    if (['scheduler_auto_paused', 'openai_stall_detected', 'openai_not_configured', 'token_refresh_failed', 'freelancer_not_connected', 'project_search_failed', 'bid_cap_reached', 'freelancer_bids_exhausted', 'bid_quota_retry', 'bid_quota_fields', 'ai_analytics_report', 'ai_winning_bids_study', 'ai_client_study'].includes(log.action)) {
       return (
         <div className="text-xs text-amber-700 dark:text-amber-400 space-y-0.5">
           {(details.message || details.reason) && <div>{details.message || details.reason}</div>}

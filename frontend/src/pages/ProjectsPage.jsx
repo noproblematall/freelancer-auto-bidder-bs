@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useProjects } from '../hooks/useProjects'
-import { timeAgo, formatBudget } from '../utils/formatters'
+import { timeAgo, formatBudget, formatAmount } from '../utils/formatters'
 import ProjectDetailModal from '../components/Projects/ProjectDetailModal'
 import { decisionLabel, decisionTone, decisionDetail } from '../utils/decisions'
 import api from '../services/api'
@@ -23,6 +23,29 @@ function getCountryInfo(code) {
   let name = upper
   try { name = _regionNames.of(upper) || upper } catch {}
   return { flag, name }
+}
+
+// The account's latest bid on the project (from the API), as a badge.
+function bidBadge(bid) {
+  if (!bid) return null
+  const when = bid.placedAt || bid.createdAt
+  const at = when ? ` · ${new Date(when).toLocaleString()}` : ''
+  const amount = bid.amount ? ` ${bid.amount}` : ''
+  if (bid.awardStatus === 'awarded') return { text: '🏆 awarded', className: 'bg-emerald-600 text-white dark:bg-emerald-500 dark:text-navy-950', title: `Your bid${amount} was awarded${at}` }
+  if (['lost', 'expired', 'rejected', 'revoked'].includes(bid.awardStatus)) {
+    return { text: bid.awardStatus === 'expired' ? 'bid · expired' : 'bid · lost', className: 'bg-slate-100 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400', title: bid.awardStatus === 'expired' ? `Project closed without anyone hired${at}` : `Project went to another freelancer${at}` }
+  }
+  switch (bid.status) {
+    case 'converted': return { text: 'client replied', className: 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400', title: `The client wrote back on your bid${amount}${bid.clientRepliedAt ? ` · ${new Date(bid.clientRepliedAt).toLocaleString()}` : ''}` }
+    case 'placed': return { text: bid.followUpAt ? 'bid placed · followed up' : 'bid placed', className: 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400', title: `Bid${amount} placed${at}` }
+    case 'pending_review': return { text: 'draft · needs review', className: 'bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300', title: 'A draft bid is waiting on the Bid History page' }
+    case 'pending': return { text: 'bid · sending', className: 'bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300', title: 'The bid is being placed' }
+    case 'error': return { text: 'bid failed', className: 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400', title: bid.errorMessage ? `Freelancer rejected the bid: ${bid.errorMessage}` : 'The bid failed' }
+    case 'retracted': return { text: 'bid retracted', className: 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400', title: `Bid retracted${at}` }
+    case 'cancelled': return { text: 'draft dismissed', className: 'bg-slate-100 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400', title: 'The draft was dismissed' }
+    case 'rejected': return { text: 'bid rejected', className: 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400', title: `Bid rejected${at}` }
+    default: return { text: `bid · ${bid.status}`, className: 'bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300', title: '' }
+  }
 }
 
 function getDetailedSkipReason(project, activeProfiles, userBids) {
@@ -355,6 +378,19 @@ export default function ProjectsPage() {
                           {project.projectType === 'fixed' ? 'Fixed' : 'Hourly'}
                         </span>
                       )}
+                      {(() => {
+                        const b = bidBadge(project.bid)
+                        return b ? (
+                          <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${b.className}`} title={b.title}>
+                            {b.text}
+                          </span>
+                        ) : null
+                      })()}
+                      {project.winningBid && !project.winningBid.isMine && (
+                        <span className="shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300" title={`Awarded to ${project.winningBid.bidderName || project.winningBid.bidderUsername || 'another freelancer'}${project.winningBid.bidderCountry ? ` (${project.winningBid.bidderCountry})` : ''}${project.winningBid.amount ? ` for ${project.winningBid.amount} ${project.currency}` : ''}${project.winningBid.period ? `, ${project.winningBid.period} days` : ''}. See Market → Winning bids.`}>
+                          awarded → {project.winningBid.bidderName || project.winningBid.bidderUsername || 'someone else'}{project.winningBid.amount ? ` · ${formatAmount(project.winningBid.amount, project.currency)}` : ''}
+                        </span>
+                      )}
                     </div>
                     {project.description && (
                       <p className="text-sm text-slate-700 dark:text-slate-200 line-clamp-2 mb-3">{project.description.replace(/\s+/g, ' ').trim()}</p>
@@ -407,7 +443,7 @@ export default function ProjectsPage() {
                             </span>
                           )
                         }
-                        if (project.relevanceScore != null) return null
+                        if (project.relevanceScore != null || project.bid) return null
                         const skipReason = getDetailedSkipReason(project, activeProfiles, userBids)
                         return (
                           <span

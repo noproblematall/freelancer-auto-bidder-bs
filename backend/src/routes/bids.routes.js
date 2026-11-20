@@ -12,10 +12,11 @@ const router = express.Router();
 
 router.use(authMiddleware);
 
+// The whole project row rides along with each bid: the Bids page shows the
+// match score, competition, average bid and posting time, and opens the same
+// project detail as the Projects page.
 const BID_PROJECT_INCLUDE = {
-  project: {
-    select: { id: true, freelancerProjectId: true, title: true, budgetMin: true, budgetMax: true, currency: true, status: true, ownerCountry: true, projectType: true },
-  },
+  project: { include: { winningBid: true } },
   profile: {
     select: { id: true, name: true },
   },

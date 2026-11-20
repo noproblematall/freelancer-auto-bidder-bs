@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { getJobFilters, updateJobFilters } from '../services/jobFilters'
+import { getJobFilters, updateJobFilters, getJobFilterSuggestions } from '../services/jobFilters'
 import TargetingFields from '../components/Profiles/TargetingFields'
 import JobFiltersSummary from '../components/Profiles/JobFiltersSummary'
+import SkillsMultiSelect from '../components/Profiles/SkillsMultiSelect'
 import { EMPTY_TARGETING } from '../components/Profiles/targeting'
 import { inputClass, labelClass, sectionLabel, card, hintClass } from '../components/Profiles/formStyles'
 
@@ -9,6 +10,8 @@ const BUDGET_FIELDS = ['budgetMinFixed', 'budgetMaxFixed', 'budgetMinHourly', 'b
 
 const INITIAL_FORM = {
   ...EMPTY_TARGETING,
+  jobs: [],
+  keywords: '',
   languages: '',
   budgetMinFixed: '',
   budgetMaxFixed: '',
@@ -23,6 +26,8 @@ function toForm(filters) {
   for (const key of Object.keys(EMPTY_TARGETING)) {
     out[key] = Array.isArray(filters[key]) ? filters[key] : []
   }
+  out.jobs = Array.isArray(filters.jobs) ? filters.jobs : []
+  out.keywords = filters.keywords || ''
   out.languages = filters.languages || ''
   for (const key of BUDGET_FIELDS) {
     out[key] = filters[key] != null ? String(filters[key]) : ''
@@ -48,6 +53,22 @@ export default function JobFiltersPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [saved, setSaved] = useState(false)
+  const [suggestions, setSuggestions] = useState(null)
+  const [suggesting, setSuggesting] = useState(false)
+
+  async function loadSuggestions() {
+    setSuggesting(true)
+    try { setSuggestions(await getJobFilterSuggestions()) }
+    catch (err) { setSuggestions({ error: err.response?.data?.error || 'Could not read your Freelancer profile. Is Freelancer connected?' }) }
+    finally { setSuggesting(false) }
+  }
+
+  function addJobs(list) {
+    setForm(prev => {
+      const have = new Set(prev.jobs.map(j => j.id))
+      return { ...prev, jobs: [...prev.jobs, ...list.filter(j => !have.has(j.id))] }
+    })
+  }
 
   useEffect(() => {
     getJobFilters()
@@ -140,6 +161,46 @@ export default function JobFiltersPage() {
           {error && (
             <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-400">{error}</div>
           )}
+
+          <div className={card}>
+            <p className={`${sectionLabel} mb-1`}>Kind of Work</p>
+            <p className={`${hintClass} mb-4`}>
+              The most important filter. Without it every profile searches all of Freelancer's newest projects and pays OpenAI to score design, admin and music jobs you will never bid on.
+            </p>
+            <div className="space-y-4">
+              <div>
+                <label className={labelClass}>Skills (Freelancer job categories)</label>
+                <SkillsMultiSelect value={form.jobs} onChange={jobs => setForm(prev => ({ ...prev, jobs }))} />
+                <p className={hintClass}>Only projects tagged with at least one of these skills are searched and listed. Fewer, sharper skills beat a long list.</p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={loadSuggestions} disabled={suggesting} className="px-3 py-1.5 text-xs font-medium rounded-md bg-slate-100 dark:bg-navy-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-navy-600 transition-colors disabled:opacity-50">
+                    {suggesting ? 'Reading your Freelancer profile…' : 'Suggest from my Freelancer profile'}
+                  </button>
+                  {suggestions?.error && <span className="text-xs text-amber-700 dark:text-amber-400">{suggestions.error}</span>}
+                  {suggestions && !suggestions.error && (
+                    <>
+                      {suggestions.hired?.length > 0 && (
+                        <button type="button" onClick={() => addJobs(suggestions.hired)} className="px-3 py-1.5 text-xs font-medium rounded-md bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors">
+                          Add the {suggestions.hired.length} skills you were hired for
+                        </button>
+                      )}
+                      {suggestions.profile?.length > 0 && (
+                        <button type="button" onClick={() => addJobs(suggestions.profile)} className="px-3 py-1.5 text-xs font-medium rounded-md bg-slate-100 dark:bg-navy-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-navy-600 transition-colors">
+                          Add all {suggestions.profile.length} profile skills
+                        </button>
+                      )}
+                      {!suggestions.hired?.length && !suggestions.profile?.length && <span className="text-xs text-slate-500">No skills found on the profile.</span>}
+                    </>
+                  )}
+                </div>
+              </div>
+              <div>
+                <label className={labelClass}>Keywords (comma-separated)</label>
+                <input type="text" value={form.keywords} onChange={set('keywords')} className={inputClass} placeholder="react, laravel, shopify" />
+                <p className={hintClass}>Sent as the Freelancer search text and matched against titles and descriptions. A profile's own keywords take precedence over these.</p>
+              </div>
+            </div>
+          </div>
 
           <div className={card}>
             <p className={`${sectionLabel} mb-4`}>Client Location &amp; Currency</p>

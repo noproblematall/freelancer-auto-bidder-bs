@@ -2,7 +2,19 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { useBids } from '../hooks/useBids'
 import { useConfirm } from '../components/ConfirmDialog'
-import { timeAgo, formatAmount } from '../utils/formatters'
+import ProjectDetailModal from '../components/Projects/ProjectDetailModal'
+import { timeAgo, formatAmount, formatBudget } from '../utils/formatters'
+
+// The project row as the Projects page's detail modal expects it (jobNames parsed).
+function projectForModal(project) {
+  if (!project) return null
+  let jobNames = []
+  try {
+    const parsed = project.jobIds ? JSON.parse(project.jobIds) : []
+    jobNames = Array.isArray(parsed) ? parsed.map(j => (typeof j === 'object' ? j : { id: j })) : []
+  } catch { jobNames = [] }
+  return { ...project, jobNames }
+}
 
 const LIMIT = 20
 
@@ -53,6 +65,7 @@ export default function BidsPage() {
   const [activeFilter, setActiveFilter] = useState(() => searchParams.get('filter') || 'all')
   const [offset, setOffset] = useState(0)
   const [expandedBid, setExpandedBid] = useState(null)
+  const [openProject, setOpenProject] = useState(null)
   const [retractingId, setRetractingId] = useState(null)
   const [retryingId, setRetryingId] = useState(null)
   const [placingNowId, setPlacingNowId] = useState(null)
@@ -582,7 +595,11 @@ export default function BidsPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <h3 className="text-sm font-semibold text-navy-950 dark:text-white truncate" title={bid.project?.title || ''}>
-                        {bid.project?.title || `Project #${bid.projectId}`}
+                        {bid.project ? (
+                          <button type="button" onClick={() => setOpenProject(projectForModal(bid.project))} className="text-left hover:underline hover:text-navy-700 dark:hover:text-emerald-400 transition-colors" title="Open project details">
+                            {bid.project.title}
+                          </button>
+                        ) : `Project #${bid.projectId}`}
                       </h3>
                       {bid.project?.freelancerProjectId && (
                         <a
@@ -656,9 +673,44 @@ export default function BidsPage() {
                         ) : null
                       })()}
                       <span>{bid.periodDays} days</span>
-                      {bid.placedAt && <span>{timeAgo(bid.placedAt)}</span>}
+                      {bid.placedAt && <span title={`Bid placed ${new Date(bid.placedAt).toLocaleString()}`}>bid {timeAgo(bid.placedAt)}</span>}
                       {!bid.placedAt && bid.createdAt && <span>{timeAgo(bid.createdAt)}</span>}
                     </div>
+                    {bid.project && (
+                      <div className="flex items-center gap-3 flex-wrap text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+                        {bid.project.relevanceScore != null && (
+                          <span className={`font-medium px-1.5 py-0.5 rounded ${
+                            bid.project.relevanceScore >= 70
+                              ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                              : bid.project.relevanceScore >= 40
+                                ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                                : 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                          }`} title="AI relevance score">
+                            match {bid.project.relevanceScore}%
+                          </span>
+                        )}
+                        {bid.project.clientScore != null && (
+                          <span className={`font-medium px-1.5 py-0.5 rounded ${
+                            bid.project.clientScore >= 65
+                              ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                              : bid.project.clientScore >= 35
+                                ? 'bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300'
+                                : 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                          }`} title={`Client score ${bid.project.clientScore}/100${bid.project.clientScoreReasons ? `\n${bid.project.clientScoreReasons}` : ''}`}>
+                            client {bid.project.clientScore}
+                          </span>
+                        )}
+                        <span title="Budget the client posted">budget {formatBudget(bid.project.budgetMin, bid.project.budgetMax, bid.project.currency)}</span>
+                        <span title="Bids on the project when BidPilot last saw it">{bid.project.bidCount} bids</span>
+                        {bid.project.bidAvg > 0 && <span title="Average of the other bids">avg {formatAmount(Math.round(bid.project.bidAvg), bid.project.currency)}</span>}
+                        {bid.project.timeSubmitted && <span title={`Posted ${new Date(bid.project.timeSubmitted).toLocaleString()}`}>posted {timeAgo(bid.project.timeSubmitted)}</span>}
+                        {bid.project.winningBid && !bid.project.winningBid.isMine && (
+                          <Link to="/market" className="font-medium text-slate-600 dark:text-slate-300 hover:underline" title={`Awarded to ${bid.project.winningBid.bidderName || bid.project.winningBid.bidderUsername || 'another freelancer'}. Compare the bids on the Market page.`}>
+                            won by {bid.project.winningBid.bidderName || bid.project.winningBid.bidderUsername || 'someone else'}{bid.project.winningBid.amount ? ` at ${formatAmount(bid.project.winningBid.amount, bid.project.currency)}` : ''}
+                          </Link>
+                        )}
+                      </div>
+                    )}
                     {bid.errorMessage && (
                       <p className="text-xs text-red-500 dark:text-red-400 mt-1.5">{bid.errorMessage}</p>
                     )}
@@ -921,6 +973,14 @@ export default function BidsPage() {
           </div>
         </div>
       )}
+
+      {/* Project details, the same panel as on the Projects page */}
+      <ProjectDetailModal
+        project={openProject}
+        isOpen={!!openProject}
+        onClose={() => setOpenProject(null)}
+        onProjectUpdated={(updated) => setOpenProject(prev => (prev ? { ...prev, ...updated } : prev))}
+      />
     </div>
   )
 }

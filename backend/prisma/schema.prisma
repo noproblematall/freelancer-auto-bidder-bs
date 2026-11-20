@@ -199,6 +199,8 @@ model Project {
 
   // Employer facts from the search response (services/freelancer/projectMapper.js)
   // and the client score computed from them (services/bidding/clientScore.js).
+  ownerName             String?   @map("owner_name")
+  ownerUsername         String?   @map("owner_username")
   ownerPaymentVerified  Boolean?  @map("owner_payment_verified")
   ownerDepositMade      Boolean?  @map("owner_deposit_made")
   ownerReviews          Int?      @map("owner_reviews")
@@ -218,10 +220,42 @@ model Project {
   decidedAt           DateTime? @map("decided_at")
   decisionProfileId   Int?      @map("decision_profile_id")
 
-  bids     Bid[]
-  meetings Meeting[]
+  bids       Bid[]
+  meetings   Meeting[]
+  winningBid WinningBid?
 
   @@map("projects")
+}
+
+// The bid that won a project we bid on (or looked at), read from Freelancer by
+// services/insights/winningBids.js once the project is awarded. Our own
+// winning bids are stored too (isMine) so the study compares like with like.
+model WinningBid {
+  id                  Int       @id @default(autoincrement())
+  projectId           Int       @unique @map("project_id")
+  freelancerBidId     Int?      @map("freelancer_bid_id")
+  bidderId            Int?      @map("bidder_id")
+  bidderName          String?   @map("bidder_name")
+  bidderUsername      String?   @map("bidder_username")
+  bidderCountry       String?   @map("bidder_country")
+  bidderRating        Float?    @map("bidder_rating")
+  bidderReviews       Int?      @map("bidder_reviews")
+  bidderHourlyRate    Float?    @map("bidder_hourly_rate")
+  bidderRegisteredAt  DateTime? @map("bidder_registered_at")
+  amount              Float?
+  period              Int?
+  description         String?
+  sealed              Boolean   @default(false)
+  highlighted         Boolean   @default(false)
+  bidSubmittedAt      DateTime? @map("bid_submitted_at")
+  isMine              Boolean   @default(false) @map("is_mine")
+  totalBids           Int?      @map("total_bids")
+  avgBid              Float?    @map("avg_bid")
+  fetchedAt           DateTime  @default(now()) @map("fetched_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("winning_bids")
 }
 
 model Bid {

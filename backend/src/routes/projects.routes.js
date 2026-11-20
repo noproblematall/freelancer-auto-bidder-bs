@@ -45,9 +45,12 @@ router.post('/search', flClient, async (req, res, next) => {
     const filterLanguages = languageList(jobFilters.languages);
     const countries = jobFilters.countries.length > 0 ? jobFilters.countries : req.body.countries;
     const languages = filterLanguages.length > 0 ? filterLanguages : req.body.languages;
+    // Kind of work from the Job Filters unless the search names its own
+    const searchJobIds = Array.isArray(jobIds) && jobIds.length > 0 ? jobIds : jobFilters.jobs.map((j) => j.id);
+    const searchQuery = (typeof query === 'string' && query.trim()) || jobFilters.keywords || undefined;
 
     const result = await searchProjects(req.flClient, {
-      query, projectTypes, minBudget, maxBudget, jobIds, countries, languages,
+      query: searchQuery, projectTypes, minBudget, maxBudget, jobIds: searchJobIds, countries, languages,
       limit: limit || 20,
       offset: offset || 0,
     });
@@ -107,6 +110,17 @@ router.get('/', async (req, res, next) => {
         orderBy: { [orderField]: sortOrder === 'asc' ? 'asc' : 'desc' },
         take: parseInt(limit),
         skip: parseInt(offset),
+        // The account's latest bid on each project, so the list can show its status,
+        // and the bid that won the project once it is known
+        include: {
+          winningBid: true,
+          bids: {
+            where: { userId: req.userId },
+            orderBy: { id: 'desc' },
+            take: 1,
+            select: { id: true, status: true, awardStatus: true, amount: true, placedAt: true, createdAt: true, clientRepliedAt: true, followUpAt: true, errorMessage: true },
+          },
+        },
       }),
       prisma.project.count({ where }),
       filterConditions.length > 0 ? prisma.project.count({ where: unfilteredWhere }) : null,
@@ -121,6 +135,8 @@ router.get('/', async (req, res, next) => {
       } catch {
         p.jobNames = [];
       }
+      p.bid = p.bids?.[0] || null;
+      delete p.bids;
       return p;
     });
 

@@ -14,6 +14,7 @@ import SettingsPage from './pages/SettingsPage'
 import CalendarPage from './pages/CalendarPage'
 import ClientsPage from './pages/ClientsPage'
 import AnalyticsPage from './pages/AnalyticsPage'
+import MarketPage from './pages/MarketPage'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -56,6 +57,7 @@ export default function App() {
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/activity" element={<ActivityLogsPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
+          <Route path="/market" element={<MarketPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

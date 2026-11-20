@@ -18,6 +18,16 @@ const { getProjectsByIds } = require('../freelancer/projects');
 const { getProjectThreads } = require('../freelancer/messages');
 const { decrypt, isExpired } = require('../../utils/tokenManager');
 const { recordClientReply, recordAwardStatus } = require('./outcomes');
+const { captureWinningBid } = require('../insights/winningBids');
+
+// Once a project is decided, keep the bid that won it (ours or someone else's).
+async function keepWinner(client, bid, myUid) {
+  try {
+    await captureWinningBid(client, { project: { id: bid.project.id, freelancerProjectId: bid.project.freelancerProjectId, bidCount: null }, myUid });
+  } catch (err) {
+    logger.warn(`outcomeSync: winning bid for project #${bid.project.id} not read: HTTP ${err.response?.status ?? 'NETWORK'} ${err.message}`);
+  }
+}
 const { notifyBidAwarded } = require('../notifications/telegram');
 const { parseChatIds } = require('../../utils/chatUtils');
 const logger = require('../../utils/logger');
@@ -69,6 +79,7 @@ async function syncAwards(user, client, myUid) {
       const status = String(fb.award_status || 'pending').toLowerCase();
       const at = fb.time_awarded ? new Date(fb.time_awarded * 1000) : new Date();
       const change = await recordAwardStatus({ userId: user.id, bid, awardStatus: status, at, sender: { id: bid.project.ownerId } });
+      if (change === 'awarded') await keepWinner(client, bid, myUid);
       if (change === 'awarded') {
         stats.awarded++;
         if (telegram) {
@@ -101,9 +112,9 @@ async function syncAwards(user, client, myUid) {
       const mineSelected = selected.some((s) => s.bidder_id === myUid || s.id === bid.freelancerBidId);
       if (mineSelected) {
         const change = await recordAwardStatus({ userId: user.id, bid, awardStatus: 'awarded', at: new Date(), sender: { id: bid.project.ownerId } });
-        if (change === 'awarded') stats.awarded++;
+        if (change === 'awarded') { stats.awarded++; await keepWinner(client, bid, myUid); }
       } else if (frontend === 'work_in_progress' || frontend === 'complete' || (selected.length > 0 && !mineSelected)) {
-        if (await recordAwardStatus({ userId: user.id, bid, awardStatus: 'lost', at: new Date() })) stats.lost++;
+        if (await recordAwardStatus({ userId: user.id, bid, awardStatus: 'lost', at: new Date() })) { stats.lost++; await keepWinner(client, bid, myUid); }
       } else if (status === 'closed' || status === 'frozen' || frontend === 'closed') {
         if (await recordAwardStatus({ userId: user.id, bid, awardStatus: 'expired', at: new Date() })) stats.lost++;
       } else if (!seen.has(fp.id)) {

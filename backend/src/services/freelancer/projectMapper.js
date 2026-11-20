@@ -72,6 +72,8 @@ function projectDataFromApi(p, users = {}) {
     status: p.status || 'active',
     projectType: p.type || null,
     lastCheckedAt: new Date(),
+    ownerName: ownerUser?.display_name || ownerUser?.public_name || null,
+    ownerUsername: ownerUser?.username || null,
     ownerPaymentVerified: owner.paymentVerified,
     ownerDepositMade: owner.depositMade,
     ownerReviews: owner.reviews,

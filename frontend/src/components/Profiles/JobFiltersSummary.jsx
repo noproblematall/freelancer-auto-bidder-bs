@@ -50,8 +50,10 @@ export default function JobFiltersSummary({ filters, onEdit }) {
   const lists = ['countries', 'excludedRegions', 'countryExceptions', 'excludedCountries', 'excludedCurrencies']
   const hasFixedBudget = filters.budgetMinFixed != null || filters.budgetMaxFixed != null
   const hasHourlyBudget = filters.budgetMinHourly != null || filters.budgetMaxHourly != null
+  const jobs = Array.isArray(filters.jobs) ? filters.jobs : []
   const hasContent =
     lists.some(k => Array.isArray(filters[k]) && filters[k].length > 0) ||
+    jobs.length > 0 || !!filters.keywords ||
     !!filters.languages || hasFixedBudget || hasHourlyBudget
 
   const text = (value) => <span className="text-sm text-slate-700 dark:text-slate-200">{value}</span>
@@ -79,10 +81,16 @@ export default function JobFiltersSummary({ filters, onEdit }) {
       <div className="px-5 py-1">
         {!hasContent ? (
           <p className="text-sm text-slate-500 dark:text-slate-400 py-3">
-            No filters set. Every profile searches all countries, currencies, budgets, and languages.
+            No filters set. Every profile searches all of Freelancer's newest projects in every skill, country, currency, budget and language. Add the skills you want to be hired for.
           </p>
         ) : (
           <>
+            <Row label="Skills">
+              {jobs.length > 0
+                ? jobs.map(j => <Pill key={j.id}>{j.name}</Pill>)
+                : <span className="text-sm text-amber-700 dark:text-amber-400">None — every profile searches all newest projects. Add the skills you want to be hired for.</span>}
+            </Row>
+            <Row label="Keywords">{text(filters.keywords || 'None')}</Row>
             <Row label="Only countries">
               {filters.countries.length > 0
                 ? filters.countries.map(c => <Pill key={c} code={c}>{countryName(c)}</Pill>)

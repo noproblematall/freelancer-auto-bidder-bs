@@ -24,10 +24,16 @@ const OVERRIDE_LIST_FIELDS = ['countries'];
 const OVERRIDE_TEXT_FIELDS = ['languages'];
 // Numeric bounds (USD) where the account value replaces the profile's own when set.
 const NUMBER_FIELDS = ['budgetMinFixed', 'budgetMaxFixed', 'budgetMinHourly', 'budgetMaxHourly'];
+// What kind of work: Freelancer skills ("jobs", [{ id, name }]) sent as the
+// search's jobs[] filter, and free-text keywords sent as its query. The
+// account's skills replace a profile's own job ids when set; keywords are used
+// when the profile has none of its own.
+const JOB_FIELDS = ['jobs'];
+const KEYWORD_FIELDS = ['keywords'];
 
 const LIST_FIELDS = [...UNION_LIST_FIELDS, ...OVERRIDE_LIST_FIELDS];
-const TEXT_FIELDS = [...OVERRIDE_TEXT_FIELDS];
-const ALL_FIELDS = [...LIST_FIELDS, ...TEXT_FIELDS, ...NUMBER_FIELDS];
+const TEXT_FIELDS = [...OVERRIDE_TEXT_FIELDS, ...KEYWORD_FIELDS];
+const ALL_FIELDS = [...LIST_FIELDS, ...TEXT_FIELDS, ...NUMBER_FIELDS, ...JOB_FIELDS];
 
 // Account-level AI context copied onto every profile for the analyzer and
 // proposal generator (users.skills_summary etc.). Not filters, but applied in
@@ -37,6 +43,7 @@ const CONTEXT_FIELDS = ['skillsSummary', 'experienceSummary', 'portfolioHighligh
 function emptyJobFilters() {
   const out = {};
   for (const f of LIST_FIELDS) out[f] = [];
+  for (const f of JOB_FIELDS) out[f] = [];
   for (const f of TEXT_FIELDS) out[f] = '';
   for (const f of NUMBER_FIELDS) out[f] = null;
   return out;
@@ -68,6 +75,28 @@ function normalizeList(value, { lowercase = false } = {}) {
   return out;
 }
 
+// [{ id, name }] with numeric ids, unique by id; strings/numbers are accepted as bare ids.
+function normalizeJobs(value) {
+  let arr = value;
+  if (typeof value === 'string') { try { arr = JSON.parse(value); } catch { arr = []; } }
+  if (!Array.isArray(arr)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const raw of arr) {
+    const id = Number(typeof raw === 'object' && raw !== null ? raw.id : raw);
+    if (!Number.isInteger(id) || id <= 0 || seen.has(id)) continue;
+    seen.add(id);
+    const name = typeof raw === 'object' && raw !== null && typeof raw.name === 'string' ? raw.name.trim().slice(0, 80) : '';
+    out.push({ id, name: name || String(id) });
+  }
+  return out;
+}
+
+// "react, shopify" → ['react', 'shopify'] (lowercase, unique)
+function keywordList(text) {
+  return [...new Set(String(text || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean))];
+}
+
 // Parse the raw DB value (JSON string or null) into a fully-populated object.
 // New accounts are seeded with defaults by prisma/seed.js; NULL here means
 // nothing is configured.
@@ -88,6 +117,9 @@ function parseJobFilters(raw) {
   }
   for (const f of NUMBER_FIELDS) {
     out[f] = normalizeNumber(parsed[f]);
+  }
+  for (const f of JOB_FIELDS) {
+    out[f] = normalizeJobs(parsed[f]);
   }
   return out;
 }
@@ -137,6 +169,13 @@ function mergeJobFilters(profile, filters) {
 
   for (const f of NUMBER_FIELDS) {
     if (filters[f] != null) merged[f] = filters[f];
+  }
+
+  // Kind of work: account skills replace the profile's job ids; account
+  // keywords fill in when the profile has none of its own.
+  if (filters.jobs.length > 0) merged.jobIds = JSON.stringify(filters.jobs.map(j => j.id));
+  if (filters.keywords && !(typeof profile.searchKeywords === 'string' && profile.searchKeywords.trim())) {
+    merged.searchKeywords = filters.keywords;
   }
 
   return merged;
@@ -189,6 +228,17 @@ function matchesJobFilters(project, filters) {
   const languages = languageList(filters.languages);
   if (languages.length > 0 && project.language && !languages.includes(String(project.language).toLowerCase())) return false;
 
+  if (filters.jobs.length > 0 && project.jobIds) {
+    let ids = [];
+    try { ids = (JSON.parse(project.jobIds) || []).map(j => Number(typeof j === 'object' && j !== null ? j.id : j)); } catch { ids = []; }
+    if (ids.length > 0 && !ids.some(id => filters.jobs.some(j => j.id === id))) return false;
+  }
+  const keywords = keywordList(filters.keywords);
+  if (keywords.length > 0) {
+    const text = `${project.title || ''} ${project.description || ''}`.toLowerCase();
+    if (!keywords.some(k => text.includes(k))) return false;
+  }
+
   if (project.projectType === 'fixed' || project.projectType === 'hourly') {
     const { min, max } = budgetBounds(filters, project.projectType);
     if (min != null) {
@@ -218,6 +268,17 @@ function jobFiltersWhere(filters) {
   const languages = languageList(filters.languages);
   if (languages.length > 0) {
     and.push({ OR: [{ language: null }, { language: { in: languages } }] });
+  }
+
+  // Skills: the stored jobIds JSON holds {"id":<n>,...} entries, so a contains
+  // on '"id":<n>,' matches the id exactly (3 does not match 30). Projects whose
+  // skills are unknown are kept.
+  if (filters.jobs.length > 0) {
+    and.push({ OR: [{ jobIds: null }, { jobIds: '[]' }, ...filters.jobs.map(j => ({ jobIds: { contains: `"id":${j.id},` } }))] });
+  }
+  const keywords = keywordList(filters.keywords);
+  if (keywords.length > 0) {
+    and.push({ OR: keywords.flatMap(k => [{ title: { contains: k } }, { description: { contains: k } }]) });
   }
 
   const kindCondition = (kind) => {
@@ -285,6 +346,7 @@ async function applyAccountSettings(profile, userId) {
 }
 
 module.exports = {
+  normalizeJobs, keywordList,
   UNION_LIST_FIELDS,
   OVERRIDE_LIST_FIELDS,
   OVERRIDE_TEXT_FIELDS,
