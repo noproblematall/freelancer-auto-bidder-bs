@@ -20,6 +20,7 @@ const notificationRoutes = require('./routes/notifications.routes');
 const meetingRoutes = require('./routes/meetings.routes');
 const clientRoutes = require('./routes/clients.routes');
 const jobFilterRoutes = require('./routes/jobFilters.routes');
+const analyticsRoutes = require('./routes/analytics.routes');
 
 const app = express();
 
@@ -49,6 +50,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/meetings', meetingRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/job-filters', jobFilterRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // Health check
 // `instance` lets the Electron shell confirm the server on its port is the
