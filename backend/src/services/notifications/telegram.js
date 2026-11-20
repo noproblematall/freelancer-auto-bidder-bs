@@ -13,7 +13,7 @@ async function sendTelegramMessage(botToken, chatId, text) {
   return response.data;
 }
 
-async function notifyNewMessage({ botToken, chatId, senderName, projectTitle, projectUrl, messageText, threadUrl }) {
+async function notifyNewMessage({ botToken, chatId, senderName, projectTitle, projectUrl, messageText, threadUrl, draftReply, autoReplied }) {
   const preview = messageText ? messageText.slice(0, 200) + (messageText.length > 200 ? '…' : '') : '(no preview)';
   const lines = [
     '💬 <b>New Freelancer Message</b>',
@@ -28,7 +28,11 @@ async function notifyNewMessage({ botToken, chatId, senderName, projectTitle, pr
     }
   }
   lines.push('', escapeHtml(preview));
-  if (projectUrl) lines.push('', `<a href="${projectUrl}">View project →</a>`);
+  if (draftReply) {
+    lines.push('', autoReplied ? '✅ <b>Replied automatically:</b>' : '✍️ <b>Suggested reply</b> (copy, edit, send):', escapeHtml(draftReply.slice(0, 700)));
+  }
+  if (threadUrl) lines.push('', `<a href="${threadUrl}">Open conversation →</a>`);
+  else if (projectUrl) lines.push('', `<a href="${projectUrl}">View project →</a>`);
 
   const text = lines.join('\n');
   try {
@@ -58,6 +62,27 @@ async function notifyBidPlaced({ botToken, chatId, projectTitle, projectUrl, amo
     logger.info(`Telegram bid-placed notification sent to chat ${chatId}`);
   } catch (err) {
     logger.error(`Telegram bid-placed notification failed: ${err.message}`);
+    throw err;
+  }
+}
+
+async function notifyBidAwarded({ botToken, chatId, projectTitle, projectUrl, amount, currency }) {
+  const symbol = currency && currency !== 'USD' ? `${currency} ` : '$';
+  const lines = ['🏆 <b>Project Awarded!</b>', ''];
+  if (projectTitle) {
+    lines.push(projectUrl
+      ? `<b>Project:</b> <a href="${projectUrl}">${escapeHtml(projectTitle)}</a>`
+      : `<b>Project:</b> ${escapeHtml(projectTitle)}`
+    );
+  }
+  if (amount) lines.push(`<b>Bid:</b> ${symbol}${amount}`);
+  lines.push('', 'Accept it on Freelancer and reply to the client to start.');
+  if (projectUrl) lines.push('', `<a href="${projectUrl}">View project →</a>`);
+  try {
+    await sendTelegramMessage(botToken, chatId, lines.join('\n'));
+    logger.info(`Telegram award notification sent to chat ${chatId}`);
+  } catch (err) {
+    logger.error(`Telegram award notification failed: ${err.message}`);
     throw err;
   }
 }
@@ -179,4 +204,4 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;');
 }
 
-module.exports = { sendTelegramMessage, notifyNewMessage, notifyBidPlaced, notifyBidError, notifyEngineStalled, notifySchedulerPaused, notifyMeetingDetected, notifyMeetingReminder };
+module.exports = { sendTelegramMessage, notifyNewMessage, notifyBidPlaced, notifyBidAwarded, notifyBidError, notifyEngineStalled, notifySchedulerPaused, notifyMeetingDetected, notifyMeetingReminder };

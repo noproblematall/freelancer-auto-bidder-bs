@@ -13,6 +13,11 @@ async function searchProjects(client, filters = {}) {
     owner_info: true,
     user_details: true,
     users: true,
+    // Employer facts for the client score: payment/deposit status and the
+    // employer-side reputation (reviews, rating, projects posted/completed).
+    user_status: true,
+    user_employer_reputation: true,
+    user_country_details: true,
   };
 
   if (filters.query) params.query = filters.query;
@@ -52,6 +57,18 @@ async function getProjectById(client, projectId) {
   return result;
 }
 
+// Current status of a batch of projects (active | closed | frozen | …) and
+// their selected (awarded) bids, used by outcomeSync to tell lost bids from
+// pending ones. Freelancer accepts up to ~100 ids per call.
+async function getProjectsByIds(client, projectIds) {
+  const ids = (projectIds || []).filter(Boolean);
+  if (!ids.length) return [];
+  const response = await client.get('/projects/0.1/projects/', {
+    params: { 'projects[]': ids, selected_bids: true, limit: ids.length },
+  });
+  return response.data?.result?.projects || [];
+}
+
 async function getJobs(client, jobIds = null) {
   const params = { seo_details: false, lang: 'en' };
   if (jobIds && jobIds.length) params['job_ids[]'] = jobIds;
@@ -60,4 +77,4 @@ async function getJobs(client, jobIds = null) {
   return response.data.result;
 }
 
-module.exports = { searchProjects, getProjectById, getJobs };
+module.exports = { searchProjects, getProjectById, getProjectsByIds, getJobs };

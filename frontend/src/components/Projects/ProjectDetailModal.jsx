@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { timeAgo, formatBudget } from '../../utils/formatters'
 import { getProjectDetail, analyzeProject, generateProposal } from '../../services/projects'
 import { placeBid } from '../../services/bids'
+import { decisionLabel, decisionTone, decisionDetail } from '../../utils/decisions'
 
 const _regionNames = new Intl.DisplayNames(['en'], { type: 'region' })
 
@@ -251,6 +252,41 @@ export default function ProjectDetailModal({ project, isOpen, onClose, onProject
               ) : null
             })()}
           </div>
+
+          {/* Why BidPilot did or did not bid */}
+          {decisionLabel(project) && (
+            <div className="p-3.5 rounded-lg bg-slate-50 dark:bg-navy-800/50 border border-slate-200 dark:border-white/8">
+              <div className="flex items-center gap-2 mb-1">
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400">BidPilot decision</p>
+                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${decisionTone(project)}`}>{decisionLabel(project)}</span>
+                {project.decidedAt && <span className="text-[11px] text-slate-400">{timeAgo(project.decidedAt)}</span>}
+              </div>
+              {decisionDetail(project) && <p className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap">{decisionDetail(project)}</p>}
+            </div>
+          )}
+
+          {/* Client */}
+          {(project.clientScore != null || project.ownerPaymentVerified != null) && (
+            <div className="p-3.5 rounded-lg bg-slate-50 dark:bg-navy-800/50 border border-slate-200 dark:border-white/8">
+              <div className="flex items-center gap-2 mb-1">
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Client</p>
+                {project.clientScore != null && (
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${project.clientScore >= 65 ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : project.clientScore >= 35 ? 'bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300' : 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'}`}>
+                    score {project.clientScore}/100
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700 dark:text-slate-200">
+                {project.ownerPaymentVerified != null && <span>{project.ownerPaymentVerified ? '✓ payment verified' : '○ payment not verified'}</span>}
+                {project.ownerDepositMade && <span>✓ deposit made</span>}
+                {project.ownerReviews != null && <span>{project.ownerReviews} review{project.ownerReviews === 1 ? '' : 's'}{project.ownerRating != null ? ` · ${Number(project.ownerRating).toFixed(1)} ★` : ''}</span>}
+                {project.ownerProjectsAll != null && project.ownerProjectsAll > 0 && <span>{project.ownerProjectsComplete ?? 0} of {project.ownerProjectsAll} projects completed</span>}
+                {project.ownerRegisteredAt && <span>member since {new Date(project.ownerRegisteredAt).getFullYear()}</span>}
+                {project.bidAvg != null && project.bidAvg > 0 && <span>average bid {Math.round(project.bidAvg)} {project.currency}</span>}
+              </div>
+              {project.clientScoreReasons && <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400 whitespace-pre-wrap">{project.clientScoreReasons}</p>}
+            </div>
+          )}
 
           {/* Skills */}
           {project.jobNames?.length > 0 && (

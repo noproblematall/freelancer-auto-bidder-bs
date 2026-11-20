@@ -441,7 +441,7 @@ router.patch('/:id/convert', async (req, res, next) => {
 
     const updatedBid = await prisma.bid.update({
       where: { id: bid.id },
-      data: { status: 'converted' },
+      data: { status: 'converted', clientRepliedAt: bid.clientRepliedAt || new Date() },
       include: BID_PROJECT_INCLUDE,
     });
 

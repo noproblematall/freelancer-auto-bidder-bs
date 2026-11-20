@@ -1,20 +1,31 @@
 const cron = require('node-cron');
 const prisma = require('../../config/database');
 const { createFreelancerClient } = require('../freelancer/client');
-const { getThreadsSince } = require('../freelancer/messages');
+const { getThreadsSince, sendMessage } = require('../freelancer/messages');
 const { notifyNewMessage, notifyMeetingDetected } = require('../notifications/telegram');
 const { fireWebhook } = require('../notifications/webhook');
 const { decrypt, isExpired } = require('../../utils/tokenManager');
 const { detectMeeting } = require('../openai/meetingDetector');
+const { draftReply } = require('../openai/replyDrafter');
 const { createOpenAIClient } = require('../openai/client');
+const { recordClientReply } = require('../bidding/outcomes');
 const { parseChatIds } = require('../../utils/chatUtils');
 const logger = require('../../utils/logger');
 
 let pollCronJob = null;
 let isPolling = false; // Guard against concurrent poll runs
 
-// Maximum lookback window: don't look further back than this on retries/first run
+// Notifications never replay further back than this after downtime: a day of
+// old messages arriving as Telegram pings is noise. Reply TRACKING, however,
+// looks back a week (TRACK_LOOKBACK_MS) so a client who wrote while the app
+// was closed is still recorded as a reply (bid converted, client saved).
 const MAX_LOOKBACK_MS = 30 * 60 * 1000; // 30 minutes
+const TRACK_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
+const AUTO_REPLY_COOLDOWN_MS = 24 * 60 * 60 * 1000; // at most one automatic reply per thread per day
+
+// Messages Freelancer generates itself (award notices, milestone requests…)
+// are not a client talking to us and never get an automatic reply.
+const SYSTEM_MESSAGE = /^(the project has been awarded|you have been awarded|milestone|the employer has|this project has been)/i;
 
 /**
  * Poll Freelancer messages for all users with Telegram notifications enabled.
@@ -52,6 +63,9 @@ async function _doPollMessages() {
         openaiApiKey: true,
         openaiModel: true,
         scheduleTimezone: true,
+        autoReplyEnabled: true,
+        skillsSummary: true,
+        experienceSummary: true,
         freelancerToken: {
           select: {
             accessToken: true,
@@ -100,21 +114,24 @@ async function checkUserMessages(user) {
   const client = createFreelancerClient(accessToken);
   const myUid = String(token.freelancerUid || '');
 
-  // Determine from-time:
-  //   - Use lastMessageCheckAt if set
-  //   - Otherwise default to 5 minutes ago (first run)
-  //   - Cap at MAX_LOOKBACK_MS to avoid replaying a large backlog after downtime
-  const earliestAllowed = new Date(Date.now() - MAX_LOOKBACK_MS);
+  // Two windows from lastMessageCheckAt (5 minutes ago on the first run):
+  //   - tracking: capped at a week back, so replies that arrived while the
+  //     app was closed are still recorded
+  //   - notifying: capped at 30 minutes back, so old messages are not replayed
   const rawFromTime = user.lastMessageCheckAt
     ? new Date(user.lastMessageCheckAt)
     : new Date(Date.now() - 5 * 60 * 1000);
-  const fromTime = rawFromTime < earliestAllowed ? earliestAllowed : rawFromTime;
+  const trackEarliest = new Date(Date.now() - TRACK_LOOKBACK_MS);
+  const notifyEarliest = new Date(Date.now() - MAX_LOOKBACK_MS);
+  const fromTime = rawFromTime < trackEarliest ? trackEarliest : rawFromTime;
   const fromTimestampSec = Math.floor(fromTime.getTime() / 1000);
+  const notifyFromSec = Math.floor(Math.max(rawFromTime.getTime(), notifyEarliest.getTime()) / 1000);
+  const catchingUp = rawFromTime < notifyEarliest;
   const nowMs = Date.now();
 
   let threads, users;
   try {
-    ({ threads, users } = await getThreadsSince(client, fromTimestampSec));
+    ({ threads, users } = await getThreadsSince(client, fromTimestampSec, catchingUp ? 100 : 20));
   } catch (err) {
     logger.error(`MessagePoller: failed to fetch threads for user ${user.id}: ${err.message}`);
     // Do NOT advance lastMessageCheckAt on failure — retry the same window next poll.
@@ -180,10 +197,11 @@ async function checkUserMessages(user) {
       // Look up project in local DB (needed for MessageThread.projectId)
       let projectTitle = null;
       let localProjectId = null;
+      let localProject = null;
       if (context?.type === 'project' && context.id) {
-        const localProject = await prisma.project.findUnique({
+        localProject = await prisma.project.findUnique({
           where: { freelancerProjectId: context.id },
-          select: { id: true, title: true },
+          select: { id: true, title: true, description: true },
         }).catch(() => null);
         projectTitle = localProject?.title || null;
         localProjectId = localProject?.id || null;
@@ -228,60 +246,66 @@ async function checkUserMessages(user) {
         || senderUser?.username
         || `User #${senderId}`;
 
-      // Auto-convert placed bid on first client message, and upsert Client record
+      // Record the client's reply on the bid (converts a placed bid, saves the
+      // client) — shared with outcomeSync so both paths behave the same.
+      let bidOnProject = null;
       if (localProjectId) {
-        const placedBid = await prisma.bid.findFirst({
-          where: { userId: user.id, projectId: localProjectId, status: 'placed' },
-          select: { id: true, amount: true },
+        bidOnProject = await prisma.bid.findFirst({
+          where: { userId: user.id, projectId: localProjectId, status: { in: ['placed', 'converted'] } },
+          orderBy: { id: 'desc' },
+          select: { id: true, status: true, amount: true, projectId: true, clientRepliedAt: true, proposalText: true, profileId: true },
         }).catch(() => null);
-
-        if (placedBid) {
-          await prisma.bid.update({
-            where: { id: placedBid.id },
-            data: { status: 'converted' },
+        if (bidOnProject) {
+          const earliest = newIncoming.reduce((a, m) => (m.time_created < a ? m.time_created : a), newIncoming[0].time_created);
+          const first = await recordClientReply({
+            userId: user.id, bid: bidOnProject, at: new Date(earliest * 1000),
+            sender: { id: Number(senderId), displayName: senderName !== `User #${senderId}` ? senderName : null, username: senderUser?.username || null, country: senderUser?.location?.country?.code || null },
           });
-          await prisma.activityLog.create({
-            data: {
-              userId: user.id,
-              action: 'bid_converted',
-              details: JSON.stringify({
-                bidId: placedBid.id,
-                projectId: localProjectId,
-                reason: 'first_client_message',
-                senderId,
-              }),
-            },
-          }).catch(() => {});
-          logger.info(`MessagePoller: bid #${placedBid.id} auto-converted — first message from client ${senderId} on project #${localProjectId}`);
-          converted++;
+          if (first) converted++;
+        }
+      }
 
-          // Upsert Client record for converted client
-          const senderFlId = Number(senderId);
-          const clientDisplayName = senderName !== `User #${senderId}` ? senderName : null;
-          const clientUsername = senderUser?.username || null;
-          const clientCountry = senderUser?.location?.country?.code || null;
-          await prisma.client.upsert({
-            where: { userId_freelancerUserId: { userId: user.id, freelancerUserId: senderFlId } },
-            update: {
-              ...(clientDisplayName && { displayName: clientDisplayName }),
-              ...(clientUsername && { username: clientUsername }),
-              ...(clientCountry && { country: clientCountry }),
-              projectCount: { increment: 1 },
-              totalValue: { increment: placedBid.amount || 0 },
-              lastProjectAt: new Date(),
-              updatedAt: new Date(),
-            },
-            create: {
-              userId: user.id,
-              freelancerUserId: senderFlId,
-              displayName: clientDisplayName,
-              username: clientUsername,
-              country: clientCountry,
-              projectCount: 1,
-              totalValue: placedBid.amount || 0,
-              lastProjectAt: new Date(),
-            },
-          }).catch(e => logger.warn(`MessagePoller: failed to upsert Client ${senderFlId}: ${e.message}`));
+      // Only messages inside the notify window get Telegram/webhook/replies;
+      // older ones (found while catching up after downtime) are tracked only.
+      if (latestMsg.time_created < notifyFromSec) continue;
+
+      // Draft an answer when the client wrote on a project we bid on, and send
+      // it when automatic replies are on (first client message of the day in
+      // the thread, not a Freelancer system notice, nothing sent by us since).
+      let draft = null;
+      let autoReplied = false;
+      if (openai && bidOnProject && localProject && threadId) {
+        try {
+          const recent = messages
+            .slice()
+            .sort((a, b) => a.time_created - b.time_created)
+            .slice(-6)
+            .map((m) => ({ fromMe: myUid ? String(m.from_user) === myUid : false, text: m.message || '' }));
+          draft = await draftReply(openai, {
+            project: localProject, proposalText: bidOnProject.proposalText, recent,
+            profile: { skillsSummary: user.skillsSummary, experienceSummary: user.experienceSummary },
+          });
+          const threadRow = await prisma.messageThread.findUnique({
+            where: { userId_freelancerThreadId: { userId: user.id, freelancerThreadId: threadId } },
+            select: { autoRepliedAt: true },
+          }).catch(() => null);
+          const clientSpokeLast = !lastFromMe || (lastFromClient && lastFromClient > lastFromMe);
+          const cooledDown = !threadRow?.autoRepliedAt || (Date.now() - new Date(threadRow.autoRepliedAt).getTime()) > AUTO_REPLY_COOLDOWN_MS;
+          const isSystem = SYSTEM_MESSAGE.test(String(latestMsg.message || '').trim());
+          if (user.autoReplyEnabled && draft && clientSpokeLast && cooledDown && !isSystem) {
+            await sendMessage(client, threadId, draft);
+            autoReplied = true;
+            await prisma.activityLog.create({
+              data: { userId: user.id, action: 'auto_reply_sent', details: JSON.stringify({ bidId: bidOnProject.id, projectId: localProjectId, threadId, message: draft }) },
+            }).catch(() => {});
+            logger.info(`MessagePoller: automatic reply sent in thread ${threadId} (project #${localProjectId})`);
+          }
+          await prisma.messageThread.update({
+            where: { userId_freelancerThreadId: { userId: user.id, freelancerThreadId: threadId } },
+            data: { draftReply: draft, ...(autoReplied && { autoRepliedAt: new Date(), lastMessageFromMeAt: new Date() }) },
+          }).catch(() => {});
+        } catch (replyErr) {
+          logger.warn(`MessagePoller: reply drafting failed for thread ${threadId}: ${replyErr.message}`);
         }
       }
 
@@ -384,6 +408,8 @@ async function checkUserMessages(user) {
           projectUrl,
           messageText,
           threadUrl,
+          draftReply: draft,
+          autoReplied,
         });
       }
       notified++;
@@ -393,7 +419,7 @@ async function checkUserMessages(user) {
   }
 
   if (converted > 0) {
-    logger.info(`MessagePoller: auto-converted ${converted} bid(s) for user ${user.id}`);
+    logger.info(`MessagePoller: recorded ${converted} client repl${converted === 1 ? 'y' : 'ies'} for user ${user.id}${catchingUp ? ' (catching up after downtime)' : ''}`);
   }
   if (notified > 0) {
     logger.info(`MessagePoller: sent ${notified} notification(s) for user ${user.id}`);

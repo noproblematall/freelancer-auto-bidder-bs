@@ -598,8 +598,23 @@ export default function BidsPage() {
                         </a>
                       )}
                       <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full transition-colors duration-500 ${STATUS_COLORS[bid.status] || STATUS_COLORS.pending}`}>
-                        {bid.status === 'pending_review' ? 'needs review' : bid.status}
+                        {bid.status === 'pending_review' ? 'needs review' : bid.status === 'converted' ? 'client replied' : bid.status}
                       </span>
+                      {bid.awardStatus === 'awarded' && (
+                        <span className="shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-600 text-white dark:bg-emerald-500 dark:text-navy-950" title={bid.awardedAt ? `Awarded ${new Date(bid.awardedAt).toLocaleString()}` : 'Awarded by the client'}>
+                          🏆 awarded
+                        </span>
+                      )}
+                      {['lost', 'expired', 'rejected', 'revoked'].includes(bid.awardStatus) && (
+                        <span className="shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400" title={bid.awardStatus === 'expired' ? 'The project closed without anyone being hired' : bid.awardStatus === 'lost' ? 'The project went to another freelancer' : `Freelancer reports the bid as ${bid.awardStatus}`}>
+                          {bid.awardStatus === 'expired' ? 'expired' : 'lost'}
+                        </span>
+                      )}
+                      {bid.followUpAt && (
+                        <span className="shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-400" title={`Follow-up sent ${new Date(bid.followUpAt).toLocaleString()}`}>
+                          followed up
+                        </span>
+                      )}
                       {bid.profile && (
                         <Link
                           to="/profiles"

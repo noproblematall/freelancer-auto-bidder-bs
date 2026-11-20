@@ -378,6 +378,13 @@ router.get('/status', authMiddleware, async (req, res, next) => {
         aiBidPercentage: true,
         bidHistoryLimit: true,
         reviewMode: true,
+        minClientScore: true,
+        maxProjectBids: true,
+        followUpEnabled: true,
+        followUpHours: true,
+        followUpMinScore: true,
+        autoReplyEnabled: true,
+        aiReviewAuto: true,
         skillsSummary: true,
         experienceSummary: true,
         portfolioHighlights: true,
@@ -426,6 +433,13 @@ router.get('/status', authMiddleware, async (req, res, next) => {
         aiBidPercentage: user.aiBidPercentage,
         bidHistoryLimit: user.bidHistoryLimit,
         reviewMode: user.reviewMode,
+        minClientScore: user.minClientScore,
+        maxProjectBids: user.maxProjectBids,
+        followUpEnabled: user.followUpEnabled,
+        followUpHours: user.followUpHours,
+        followUpMinScore: user.followUpMinScore,
+        autoReplyEnabled: user.autoReplyEnabled,
+        aiReviewAuto: user.aiReviewAuto,
         skillsSummary: user.skillsSummary || '',
         experienceSummary: user.experienceSummary || '',
         portfolioHighlights: user.portfolioHighlights || '',
@@ -525,6 +539,13 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
       aiBidPercentage,
       bidHistoryLimit,
       reviewMode,
+      minClientScore,
+      maxProjectBids,
+      followUpEnabled,
+      followUpHours,
+      followUpMinScore,
+      autoReplyEnabled,
+      aiReviewAuto,
       skillsSummary,
       experienceSummary,
       portfolioHighlights,
@@ -716,6 +737,25 @@ router.put('/settings', authMiddleware, async (req, res, next) => {
         return res.status(400).json({ error: 'reviewMode must be a boolean' });
       }
       data.reviewMode = reviewMode;
+    }
+
+    // Client-quality gate, follow-ups, automatic replies, monthly AI review
+    const intField = (raw, name, min, max) => {
+      const n = Number(raw);
+      if (!Number.isInteger(n) || n < min || n > max) throw new Error(`${name} must be a whole number between ${min} and ${max}`);
+      return n;
+    };
+    const boolField = (raw, name) => { if (typeof raw !== 'boolean') throw new Error(`${name} must be a boolean`); return raw; };
+    try {
+      if (minClientScore !== undefined) data.minClientScore = intField(minClientScore, 'Minimum client score', 0, 100);
+      if (maxProjectBids !== undefined) data.maxProjectBids = intField(maxProjectBids, 'Max bids on a project', 0, 500);
+      if (followUpEnabled !== undefined) data.followUpEnabled = boolField(followUpEnabled, 'followUpEnabled');
+      if (followUpHours !== undefined) data.followUpHours = intField(followUpHours, 'Follow-up delay (hours)', 1, 72);
+      if (followUpMinScore !== undefined) data.followUpMinScore = intField(followUpMinScore, 'Follow-up minimum score', 0, 100);
+      if (autoReplyEnabled !== undefined) data.autoReplyEnabled = boolField(autoReplyEnabled, 'autoReplyEnabled');
+      if (aiReviewAuto !== undefined) data.aiReviewAuto = boolField(aiReviewAuto, 'aiReviewAuto');
+    } catch (e) {
+      return res.status(400).json({ error: e.message });
     }
 
     // Freelancer profile — AI context for scoring and proposals

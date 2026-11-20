@@ -53,6 +53,15 @@ export default function SettingsPage() {
   const [bidDelaySeconds, setBidDelaySeconds] = useState(user?.bidDelaySeconds ?? 30)
   const [sealBids, setSealBids] = useState(user?.sealBids || false)
   const [bidDelayMessage, setBidDelayMessage] = useState(null)
+  // Client-quality gate, follow-ups, automatic replies, monthly AI review
+  const [minClientScore, setMinClientScore] = useState(user?.minClientScore ?? 35)
+  const [maxProjectBids, setMaxProjectBids] = useState(user?.maxProjectBids ?? 40)
+  const [followUpEnabled, setFollowUpEnabled] = useState(user?.followUpEnabled || false)
+  const [followUpHours, setFollowUpHours] = useState(user?.followUpHours ?? 24)
+  const [followUpMinScore, setFollowUpMinScore] = useState(user?.followUpMinScore ?? 85)
+  const [autoReplyEnabled, setAutoReplyEnabled] = useState(user?.autoReplyEnabled || false)
+  const [aiReviewAuto, setAiReviewAuto] = useState(user?.aiReviewAuto ?? true)
+  const [winningMessage, setWinningMessage] = useState(null)
   const [maxBidsPerHour, setMaxBidsPerHour] = useState(user?.maxBidsPerHour ?? 8)
   const [maxBidsPerDay, setMaxBidsPerDay] = useState(user?.maxBidsPerDay ?? 80)
   const [rateLimitMessage, setRateLimitMessage] = useState(null)
@@ -170,6 +179,13 @@ export default function SettingsPage() {
     if (user?.sealBids !== undefined) {
       setSealBids(user.sealBids)
     }
+    if (user?.minClientScore !== undefined) setMinClientScore(user.minClientScore ?? 35)
+    if (user?.maxProjectBids !== undefined) setMaxProjectBids(user.maxProjectBids ?? 40)
+    if (user?.followUpEnabled !== undefined) setFollowUpEnabled(!!user.followUpEnabled)
+    if (user?.followUpHours !== undefined) setFollowUpHours(user.followUpHours ?? 24)
+    if (user?.followUpMinScore !== undefined) setFollowUpMinScore(user.followUpMinScore ?? 85)
+    if (user?.autoReplyEnabled !== undefined) setAutoReplyEnabled(!!user.autoReplyEnabled)
+    if (user?.aiReviewAuto !== undefined) setAiReviewAuto(user.aiReviewAuto !== false)
     if (user?.maxBidsPerHour !== undefined) setMaxBidsPerHour(user.maxBidsPerHour)
     if (user?.maxBidsPerDay !== undefined) setMaxBidsPerDay(user.maxBidsPerDay)
     if (user?.hourlyRate !== undefined) setHourlyRate(user.hourlyRate ?? '')
@@ -405,6 +421,29 @@ export default function SettingsPage() {
     } catch (err) {
       setPeriodMessage({ type: 'error', text: err.response?.data?.error || 'Failed to save delivery period — try again.' })
     }
+  }
+
+  // Whole-number settings in the "Winning more" block, saved on blur.
+  async function saveWinningNumber(field, raw, min, max, setter) {
+    let value = parseInt(raw, 10)
+    if (isNaN(value) || value < min) value = min
+    if (value > max) value = max
+    setter(value)
+    setWinningMessage(null)
+    try {
+      await updateSettings({ [field]: value })
+      setWinningMessage({ type: 'success', text: 'Saved.' })
+      setTimeout(() => setWinningMessage(null), 2500)
+    } catch (err) {
+      setWinningMessage({ type: 'error', text: err.response?.data?.error || 'Failed to save — try again.' })
+    }
+  }
+
+  async function saveWinningToggle(field, next, setter) {
+    setter(next)
+    setWinningMessage(null)
+    try { await updateSettings({ [field]: next }) }
+    catch (err) { setter(!next); setWinningMessage({ type: 'error', text: err.response?.data?.error || 'Failed to save — try again.' }) }
   }
 
   async function saveRateLimit(field, raw, max, setter) {
@@ -1640,6 +1679,93 @@ export default function SettingsPage() {
                         reviewMode ? 'translate-x-5' : 'translate-x-0.5'
                       }`}
                     />
+                  </button>
+                </div>
+              </div>
+
+              {/* Winning more: client gate, follow-ups, automatic replies, monthly review */}
+              <div className="p-4 rounded-lg bg-slate-50 dark:bg-navy-900/50 border border-slate-200 dark:border-white/8 space-y-4">
+                <div>
+                  <p className="text-sm font-medium text-navy-950 dark:text-white">Winning more</p>
+                  <p className="text-xs text-slate-700 dark:text-slate-200 mt-1">
+                    Skip clients unlikely to hire, keep the conversation going after a bid, and let the AI review re-check the numbers monthly. Results show on the Analytics page.
+                    {winningMessage && (
+                      <span className={`ml-2 font-medium ${winningMessage.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>{winningMessage.text}</span>
+                    )}
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="min-client-score" className="block text-xs font-medium text-slate-700 dark:text-slate-200 mb-1.5">Minimum client score (0–100)</label>
+                    <input
+                      id="min-client-score"
+                      type="number" min="0" max="100"
+                      value={minClientScore}
+                      onChange={(e) => setMinClientScore(e.target.value)}
+                      onBlur={(e) => saveWinningNumber('minClientScore', e.target.value, 0, 100, setMinClientScore)}
+                      className="w-full px-3 py-2 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500/20 focus:border-navy-500 transition-colors"
+                    />
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Payment verified, reviews, hire history, account age. 0 turns the gate off; past clients always pass.</p>
+                  </div>
+                  <div>
+                    <label htmlFor="max-project-bids" className="block text-xs font-medium text-slate-700 dark:text-slate-200 mb-1.5">Max bids already on a project</label>
+                    <input
+                      id="max-project-bids"
+                      type="number" min="0" max="500"
+                      value={maxProjectBids}
+                      onChange={(e) => setMaxProjectBids(e.target.value)}
+                      onBlur={(e) => saveWinningNumber('maxProjectBids', e.target.value, 0, 500, setMaxProjectBids)}
+                      className="w-full px-3 py-2 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500/20 focus:border-navy-500 transition-colors"
+                    />
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Projects with more bids than this are skipped before any OpenAI call. 0 = no cap.</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start justify-between gap-4 pt-3 border-t border-slate-200 dark:border-white/8">
+                  <div className="flex-1">
+                    <label htmlFor="follow-up" className="block text-sm font-medium text-navy-950 dark:text-white">Follow up on unanswered bids</label>
+                    <p className="text-xs text-slate-700 dark:text-slate-200 mt-1">
+                      One short message to the client, written by your OpenAI model from the brief and your bid, when a high-scoring bid has had no reply. At most five an hour; never twice on the same bid.
+                    </p>
+                    {followUpEnabled && (
+                      <div className="grid grid-cols-2 gap-4 mt-3 max-w-sm">
+                        <div>
+                          <label htmlFor="follow-up-hours" className="block text-xs font-medium text-slate-700 dark:text-slate-200 mb-1.5">After (hours)</label>
+                          <input id="follow-up-hours" type="number" min="1" max="72" value={followUpHours} onChange={(e) => setFollowUpHours(e.target.value)} onBlur={(e) => saveWinningNumber('followUpHours', e.target.value, 1, 72, setFollowUpHours)} className="w-full px-3 py-2 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500/20 focus:border-navy-500 transition-colors" />
+                        </div>
+                        <div>
+                          <label htmlFor="follow-up-score" className="block text-xs font-medium text-slate-700 dark:text-slate-200 mb-1.5">Only if relevance ≥</label>
+                          <input id="follow-up-score" type="number" min="0" max="100" value={followUpMinScore} onChange={(e) => setFollowUpMinScore(e.target.value)} onBlur={(e) => saveWinningNumber('followUpMinScore', e.target.value, 0, 100, setFollowUpMinScore)} className="w-full px-3 py-2 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500/20 focus:border-navy-500 transition-colors" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <button id="follow-up" type="button" role="switch" aria-checked={followUpEnabled} onClick={() => saveWinningToggle('followUpEnabled', !followUpEnabled, setFollowUpEnabled)} className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors ${followUpEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-navy-700'}`}>
+                    <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform mt-0.5 ${followUpEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
+
+                <div className="flex items-start justify-between gap-4 pt-3 border-t border-slate-200 dark:border-white/8">
+                  <div className="flex-1">
+                    <label htmlFor="auto-reply" className="block text-sm font-medium text-navy-950 dark:text-white">Reply to clients automatically</label>
+                    <p className="text-xs text-slate-700 dark:text-slate-200 mt-1">
+                      When a client writes on a project you bid on, a reply is drafted from the brief, your bid and the conversation. Off: the draft is sent to you on Telegram to copy. On: it is also posted in the thread, at most once a day per conversation and never for Freelancer's own system notices.
+                    </p>
+                  </div>
+                  <button id="auto-reply" type="button" role="switch" aria-checked={autoReplyEnabled} onClick={() => saveWinningToggle('autoReplyEnabled', !autoReplyEnabled, setAutoReplyEnabled)} className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors ${autoReplyEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-navy-700'}`}>
+                    <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform mt-0.5 ${autoReplyEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
+
+                <div className="flex items-start justify-between gap-4 pt-3 border-t border-slate-200 dark:border-white/8">
+                  <div className="flex-1">
+                    <label htmlFor="ai-review-auto" className="block text-sm font-medium text-navy-950 dark:text-white">Monthly AI review</label>
+                    <p className="text-xs text-slate-700 dark:text-slate-200 mt-1">
+                      Run the Analytics page's AI review by itself about every 30 days, once at least 20 new bids have gone out. One OpenAI call a month; the result appears on the Analytics page and in Activity Logs.
+                    </p>
+                  </div>
+                  <button id="ai-review-auto" type="button" role="switch" aria-checked={aiReviewAuto} onClick={() => saveWinningToggle('aiReviewAuto', !aiReviewAuto, setAiReviewAuto)} className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors ${aiReviewAuto ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-navy-700'}`}>
+                    <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform mt-0.5 ${aiReviewAuto ? 'translate-x-5' : 'translate-x-0.5'}`} />
                   </button>
                 </div>
               </div>

@@ -8,8 +8,8 @@ import { timeAgo } from '../utils/formatters'
 // Chart colours: validated categorical slots (blue = sent, aqua = won, red = errors),
 // stepped separately for the dark surface.
 const COLORS = {
-  light: { sent: '#2a78d6', won: '#1baf7a', errors: '#e34948', grid: '#e1e0d9', axis: '#64748b' },
-  dark:  { sent: '#3987e5', won: '#199e70', errors: '#e66767', grid: '#2c2c2a', axis: '#94a3b8' },
+  light: { sent: '#2a78d6', replied: '#8a63d2', won: '#1baf7a', errors: '#e34948', grid: '#e1e0d9', axis: '#64748b' },
+  dark:  { sent: '#3987e5', replied: '#a07fe0', won: '#199e70', errors: '#e66767', grid: '#2c2c2a', axis: '#94a3b8' },
 }
 
 function useDark() {
@@ -58,20 +58,24 @@ function Kpi({ label, value, hint, tone }) {
   )
 }
 
-// Rows of "segment → bids sent → won → win rate", with a bar for the win rate so
-// the best and worst segments stand out without reading every number.
+// Rows of "segment → sent → replied → won", with a bar for the reply rate (the
+// early signal; awards are rare) and the win rate beside it, so the best and
+// worst segments stand out without reading every number.
 function RateTable({ rows, label, empty = 'No bids in this period' }) {
   if (!rows || rows.length === 0) return <p className="text-sm text-slate-500 dark:text-slate-400">{empty}</p>
-  const max = Math.max(...rows.map((r) => r.winRate || 0), 1)
+  const max = Math.max(...rows.map((r) => r.replyRate || 0), 1)
   const total = rows.reduce((a, r) => a + r.sent, 0)
+  const few = (r) => r.sent < 10
   return (
     <table className="w-full text-sm">
       <thead>
         <tr className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
           <th className="text-left font-medium pb-2">{label}</th>
-          <th className="text-right font-medium pb-2">Sent</th>
-          <th className="text-right font-medium pb-2">Won</th>
-          <th className="text-right font-medium pb-2 w-36">Win rate</th>
+          <th className="text-right font-medium pb-2 pl-2">Sent</th>
+          <th className="text-right font-medium pb-2 pl-2">Replied</th>
+          <th className="text-right font-medium pb-2 pl-2">Won</th>
+          <th className="text-right font-medium pb-2 pl-2 w-32">Reply rate</th>
+          <th className="text-right font-medium pb-2 pl-2">Win</th>
         </tr>
       </thead>
       <tbody>
@@ -81,21 +85,52 @@ function RateTable({ rows, label, empty = 'No bids in this period' }) {
               {r.key}
               {total > 0 && <span className="ml-1.5 text-[11px] text-slate-400">{Math.round((r.sent / total) * 100)}%</span>}
             </td>
-            <td className="py-1.5 text-right tabular-nums text-slate-700 dark:text-slate-200">{n(r.sent)}</td>
-            <td className="py-1.5 text-right tabular-nums text-slate-700 dark:text-slate-200">{n(r.won)}</td>
+            <td className="py-1.5 pl-2 text-right tabular-nums text-slate-700 dark:text-slate-200">{n(r.sent)}</td>
+            <td className="py-1.5 pl-2 text-right tabular-nums text-slate-700 dark:text-slate-200">{n(r.replied)}</td>
+            <td className="py-1.5 pl-2 text-right tabular-nums text-slate-700 dark:text-slate-200">{n(r.won)}</td>
             <td className="py-1.5 pl-3">
               <div className="flex items-center gap-2 justify-end">
-                <div className="h-1.5 w-20 rounded-full bg-slate-100 dark:bg-white/10 overflow-hidden">
-                  <div className="h-full rounded-full bg-emerald-500" style={{ width: `${r.winRate ? (r.winRate / max) * 100 : 0}%` }} />
+                <div className="h-1.5 w-16 rounded-full bg-slate-100 dark:bg-white/10 overflow-hidden">
+                  <div className="h-full rounded-full bg-[#2a78d6] dark:bg-[#3987e5]" style={{ width: `${r.replyRate ? (r.replyRate / max) * 100 : 0}%` }} />
                 </div>
-                <span className={`tabular-nums w-11 text-right ${r.sent < 10 ? 'text-slate-400' : 'text-slate-700 dark:text-slate-200'}`} title={r.sent < 10 ? 'Fewer than 10 bids — not meaningful yet' : ''}>{pctText(r.winRate)}</span>
+                <span className={`tabular-nums w-11 text-right ${few(r) ? 'text-slate-400' : 'text-slate-700 dark:text-slate-200'}`} title={few(r) ? 'Fewer than 10 bids — not meaningful yet' : ''}>{pctText(r.replyRate)}</span>
               </div>
             </td>
+            <td className={`py-1.5 text-right tabular-nums ${few(r) ? 'text-slate-400' : 'text-emerald-700 dark:text-emerald-400'}`} title={few(r) ? 'Fewer than 10 bids — not meaningful yet' : 'won ÷ sent'}>{pctText(r.winRate)}</td>
           </tr>
         ))}
       </tbody>
     </table>
   )
+}
+
+// Freelancer-side levers (verifications, portfolio, exams…) with what is done.
+function Checklist({ checklist }) {
+  if (!checklist?.items?.length) return null
+  return (
+    <ul className="space-y-1.5">
+      {checklist.items.map((i) => (
+        <li key={i.key} className="flex items-start gap-2 text-sm">
+          <span className={`mt-0.5 inline-flex w-4 h-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${i.done === true ? 'bg-emerald-500 text-white' : i.done === null ? 'bg-slate-200 dark:bg-white/10 text-slate-500' : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'}`}>
+            {i.done === true ? '✓' : i.done === null ? '?' : '!'}
+          </span>
+          <div className="min-w-0">
+            <a href={i.url} target="_blank" rel="noopener noreferrer" className={`font-medium hover:underline ${i.done === true ? 'text-slate-500 dark:text-slate-400 line-through decoration-slate-300' : 'text-navy-950 dark:text-white'}`}>{i.title}</a>
+            {i.done !== true && <p className="text-xs text-slate-600 dark:text-slate-300">{i.why}</p>}
+          </div>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+const DECISION_TEXT = {
+  bid: 'Bid placed', queued: 'Draft queued for review', not_reached: 'Bid cap reached before it was looked at',
+  excluded_country: 'Client country excluded by Job Filters', excluded_region: 'Client region excluded by Job Filters', excluded_currency: 'Currency excluded by Job Filters',
+  budget: 'Budget outside the profile range', too_many_bids: 'Too many bids already on the project', low_client_score: 'Client score below your minimum',
+  low_score: 'AI relevance score below the profile minimum', prompt_skip: 'Proposal prompt rules said not to bid',
+  analyze_error: 'AI relevance check failed', proposal_error: 'Proposal could not be written', pricing_error: 'Bid could not be priced',
+  bid_error: 'Freelancer rejected the bid', pipeline_error: 'Unexpected error',
 }
 
 function Stars({ value }) {
@@ -127,6 +162,7 @@ function Funnel({ funnel }) {
     ['Analysed by AI', funnel.analysed],
     [`Scored ≥ ${funnel.minScore}`, funnel.qualified],
     ['Bids sent', funnel.bid],
+    ['Client replied', funnel.replied ?? 0],
     ['Won', funnel.won],
   ]
   const top = Math.max(steps[0][1] || 0, 1)
@@ -139,7 +175,7 @@ function Funnel({ funnel }) {
           <div key={label} className="flex items-center gap-3 text-sm">
             <span className="w-28 shrink-0 text-slate-700 dark:text-slate-200">{label}</span>
             <div className="flex-1 h-5 rounded bg-slate-100 dark:bg-white/5 overflow-hidden">
-              <div className={`h-full rounded ${i === 4 ? 'bg-emerald-500' : 'bg-[#2a78d6] dark:bg-[#3987e5]'}`} style={{ width: `${Math.max(1, (value / top) * 100)}%` }} />
+              <div className={`h-full rounded ${i === 5 ? 'bg-emerald-500' : 'bg-[#2a78d6] dark:bg-[#3987e5]'}`} style={{ width: `${Math.max(1, (value / top) * 100)}%` }} />
             </div>
             <span className="w-16 text-right tabular-nums text-navy-950 dark:text-white">{n(value)}</span>
             <span className="w-12 text-right tabular-nums text-[11px] text-slate-500 dark:text-slate-400">{conv !== null ? `${conv}%` : ''}</span>
@@ -397,21 +433,23 @@ export default function AnalyticsPage() {
 
       {/* KPIs */}
       {t && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <Kpi label="Bids sent" value={n(t.sent)} hint={`${n(t.sentPerDay, 1)} per day`} />
-          <Kpi label="Won" value={n(t.won)} hint={t.wonValueUsd ? `${usd(t.wonValueUsd)} in USD bids` : 'awarded projects'} tone="good" />
-          <Kpi label="Win rate" value={pctText(t.winRate)} hint="won ÷ sent" tone={t.winRate === null ? undefined : t.winRate >= 3 ? 'good' : t.winRate >= 1 ? undefined : 'warn'} />
+          <Kpi label="Client replied" value={n(t.replied)} hint={t.medianReplyMin ? `median wait ${minutes(t.medianReplyMin)}` : 'first message from the client'} />
+          <Kpi label="Reply rate" value={pctText(t.replyRate)} hint="replied ÷ sent" tone={t.replyRate === null ? undefined : t.replyRate >= 10 ? 'good' : t.replyRate >= 4 ? undefined : 'warn'} />
+          <Kpi label="Won" value={n(t.won)} hint={t.wonValueUsd ? `${usd(t.wonValueUsd)} in USD bids` : 'awarded by Freelancer'} tone="good" />
+          <Kpi label="Win rate" value={pctText(t.winRate)} hint={`won ÷ sent · ${n(t.lost)} lost · ${n(t.open)} open`} tone={t.winRate === null ? undefined : t.winRate >= 3 ? 'good' : t.winRate >= 1 ? undefined : 'warn'} />
           <Kpi label="Errors" value={n(t.errored)} hint={`${pctText(t.errorRate)} of all attempts`} tone={t.errorRate > 10 ? 'bad' : undefined} />
           <Kpi label="Median bid" value={usd(t.medianBidUsd)} hint={t.medianWonBidUsd ? `won bids: ${usd(t.medianWonBidUsd)}` : 'USD projects only'} />
           <Kpi label="Response speed" value={minutes(t.medianSpeedMin)} hint={`median, ${n(t.speedSamples)} bids`} />
-          <Kpi label="Delivery promised" value={t.medianPeriodDays ? `${t.medianPeriodDays} d` : '—'} hint="median period" />
+          <Kpi label="Follow-ups sent" value={n(t.followUpsSent)} hint={t.followUpsSent ? 'see the follow-up table below' : 'Settings → Winning more'} />
           <Kpi label="Clients" value={n(data.clients?.count)} hint={`${n(data.clients?.repeat)} repeat`} />
         </div>
       )}
 
       {/* Timeline + funnel */}
       <div className="grid lg:grid-cols-3 gap-5">
-        <Card title="Bids over time" subtitle="Sent and won per day" className="lg:col-span-2">
+        <Card title="Bids over time" subtitle="Sent, replied and won per day" className="lg:col-span-2">
           {b?.series?.length ? (
             <ResponsiveContainer width="100%" height={260}>
               <ComposedChart data={b.series} margin={{ top: 5, right: 10, left: -10, bottom: 0 }} barGap={2}>
@@ -421,6 +459,7 @@ export default function AnalyticsPage() {
                 <Tooltip labelFormatter={fmtDay} contentStyle={tooltipStyle(dark)} />
                 <Legend wrapperStyle={{ fontSize: '12px' }} />
                 <Bar dataKey="sent" name="Sent" fill={c.sent} radius={[4, 4, 0, 0]} maxBarSize={18} isAnimationActive={false} />
+                <Bar dataKey="replied" name="Replied" fill={c.replied} radius={[4, 4, 0, 0]} maxBarSize={18} isAnimationActive={false} />
                 <Bar dataKey="won" name="Won" fill={c.won} radius={[4, 4, 0, 0]} maxBarSize={18} isAnimationActive={false} />
                 <Line type="monotone" dataKey="errors" name="Errors" stroke={c.errors} strokeWidth={2} dot={false} isAnimationActive={false} />
               </ComposedChart>
@@ -441,9 +480,10 @@ export default function AnalyticsPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
                 <XAxis dataKey="hour" stroke={c.axis} tick={{ fontSize: 11 }} tickFormatter={(h) => `${h}h`} interval={1} />
                 <YAxis stroke={c.axis} tick={{ fontSize: 11 }} allowDecimals={false} />
-                <Tooltip contentStyle={tooltipStyle(dark)} labelFormatter={(h) => `${h}:00–${h}:59`} formatter={(v, name, p) => name === 'Sent' && p.payload.winRate !== null ? [`${v} (win rate ${p.payload.winRate}%)`, name] : [v, name]} />
+                <Tooltip contentStyle={tooltipStyle(dark)} labelFormatter={(h) => `${h}:00–${h}:59`} formatter={(v, name, p) => name === 'Sent' && p.payload.replyRate !== null ? [`${v} (reply rate ${p.payload.replyRate}%)`, name] : [v, name]} />
                 <Legend wrapperStyle={{ fontSize: '12px' }} />
                 <Bar dataKey="sent" name="Sent" fill={c.sent} radius={[4, 4, 0, 0]} maxBarSize={16} isAnimationActive={false} />
+                <Bar dataKey="replied" name="Replied" fill={c.replied} radius={[4, 4, 0, 0]} maxBarSize={16} isAnimationActive={false} />
                 <Bar dataKey="won" name="Won" fill={c.won} radius={[4, 4, 0, 0]} maxBarSize={16} isAnimationActive={false} />
               </BarChart>
             </ResponsiveContainer>
@@ -452,14 +492,38 @@ export default function AnalyticsPage() {
         <Card title="Day of week"><RateTable rows={b?.weekdays} label="Day" /></Card>
       </div>
 
+      {/* Freelancer-side levers + why projects were skipped */}
+      <div className="grid lg:grid-cols-2 gap-5">
+        {acct?.checklist && (
+          <Card title="Freelancer profile checklist" subtitle={`${acct.checklist.done} of ${acct.checklist.known} done · these move win rate more than any bidding setting`}>
+            <Checklist checklist={acct.checklist} />
+          </Card>
+        )}
+        <Card title="Why projects were skipped" subtitle="What the automatic runs decided about the projects found in this period">
+          {b?.decisions?.length ? (
+            <ul className="space-y-1.5 text-sm">
+              {b.decisions.map((d) => (
+                <li key={`${d.decision}-${d.reason}`} className="flex justify-between gap-3 border-b border-slate-100 dark:border-white/5 py-1">
+                  <span className="text-slate-700 dark:text-slate-200 truncate">{DECISION_TEXT[d.reason] || d.reason || d.decision}</span>
+                  <span className="tabular-nums text-navy-950 dark:text-white">{n(d.count)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="text-sm text-slate-500 dark:text-slate-400">No decisions recorded yet. Each automatic run now records why every project found was or was not bid on; open a project on the Projects page to read it.</p>}
+        </Card>
+      </div>
+
       {/* Who / what */}
       <div className="grid lg:grid-cols-2 gap-5">
+        <Card title="Client score" subtitle="Payment verified, reviews, hire history, account age, bids on the project"><RateTable rows={b?.clientScores} label="Client score" /></Card>
+        <Card title="Client kind" subtitle="Whether the client could pay and had hired before"><RateTable rows={b?.clientKinds} label="Client" /></Card>
         <Card title="Client country" subtitle="Top countries by bids sent"><RateTable rows={b?.countries} label="Country" /></Card>
-        <Card title="Bid profile" subtitle="Which profile's bids win"><RateTable rows={b?.profiles} label="Profile" /></Card>
+        <Card title="Bid profile" subtitle="Each profile is a proposal variant: compare reply rates to pick the better prompt"><RateTable rows={b?.profiles} label="Profile" /></Card>
         <Card title="Project budget" subtitle="Upper budget of the project when bid"><RateTable rows={b?.budgets} label="Budget" /></Card>
         <Card title="Competition" subtitle="Bids already on the project when BidPilot bid"><RateTable rows={b?.competition} label="Other bids" /></Card>
         <Card title="Response speed" subtitle="Time from the project being posted to the bid"><RateTable rows={b?.speed} label="Speed" /></Card>
-        <Card title="AI relevance score" subtitle="How the score given to the project relates to winning"><RateTable rows={b?.scores} label="Score" /></Card>
+        <Card title="AI relevance score" subtitle="How the score given to the project relates to replies and wins"><RateTable rows={b?.scores} label="Score" /></Card>
+        <Card title="Follow-up" subtitle="Bids with and without the follow-up message"><RateTable rows={b?.followUps} label="Follow-up" empty="No follow-ups sent yet (Settings → Auto-Bidding → Winning more)" /></Card>
         <Card title="Project type and currency">
           <div className="space-y-4">
             <RateTable rows={b?.types} label="Type" />

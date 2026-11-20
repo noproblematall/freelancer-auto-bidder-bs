@@ -21,7 +21,7 @@ router.get('/', async (req, res, next) => {
       if (actionFilter === 'scheduler') {
         where.action = { in: ['scheduler_check', 'scheduler_run_completed', 'scheduler_run_failed', 'scheduler_auto_paused', 'openai_stall_detected', 'openai_not_configured', 'token_refresh_failed'] };
       } else if (actionFilter === 'bids') {
-        where.action = { in: ['bid_placed', 'bid_placed_manual', 'bid_queued_for_review', 'bid_cancelled', 'bid_converted', 'bid_error', 'bid_retracted', 'bid_retried_success', 'bid_retried_failed'] };
+        where.action = { in: ['bid_placed', 'bid_placed_manual', 'bid_queued_for_review', 'bid_cancelled', 'bid_converted', 'bid_awarded', 'bid_lost', 'bid_error', 'bid_retracted', 'bid_retried_success', 'bid_retried_failed', 'follow_up_sent', 'follow_up_failed', 'auto_reply_sent'] };
       } else if (actionFilter === 'profiles') {
         where.action = { in: ['profile_created', 'profile_updated', 'profile_deleted'] };
       } else {

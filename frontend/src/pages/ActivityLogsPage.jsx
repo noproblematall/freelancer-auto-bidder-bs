@@ -43,6 +43,11 @@ const ACTION_COLORS = {
   bid_quota_retry: 'bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-400',
   bid_quota_fields: 'bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-400',
   ai_analytics_report: 'bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400',
+  bid_awarded: 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400',
+  bid_lost: 'bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300',
+  follow_up_sent: 'bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-400',
+  follow_up_failed: 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
+  auto_reply_sent: 'bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-400',
   bid_cap_reached: 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
   bid_queued_for_review: 'bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400',
   bid_placed_manual: 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400',
@@ -70,7 +75,12 @@ const ACTION_LABELS = {
   bid_placed_manual: 'Bid Approved & Placed',
   bid_queued_for_review: 'Draft Queued for Review',
   bid_cancelled: 'Bid Cancelled',
-  bid_converted: 'Bid Converted (client replied)',
+  bid_converted: 'Client Replied',
+  bid_awarded: 'Project Awarded',
+  bid_lost: 'Project Lost / Expired',
+  follow_up_sent: 'Follow-up Sent',
+  follow_up_failed: 'Follow-up Not Sent',
+  auto_reply_sent: 'Automatic Reply Sent',
   bid_error: 'Bid Failed',
   bid_retracted: 'Bid Retracted',
   bid_retried_success: 'Bid Retry Success',
@@ -181,13 +191,15 @@ export default function ActivityLogsPage() {
       )
     }
 
-    // Bid actions
-    if (log.action.startsWith('bid_')) {
+    // Bid actions, follow-ups and automatic replies
+    if (log.action.startsWith('bid_') || log.action.startsWith('follow_up_') || log.action === 'auto_reply_sent') {
       return (
         <div className="grid grid-cols-2 gap-2 text-xs">
           {details.bidId && <div><span className="text-slate-500 dark:text-slate-400">Bid ID:</span> <span className="font-medium">#{details.bidId}</span></div>}
           {details.projectId && <div><span className="text-slate-500 dark:text-slate-400">Project ID:</span> <span className="font-medium">#{details.projectId}</span></div>}
           {details.freelancerBidId && <div><span className="text-slate-500 dark:text-slate-400">Freelancer Bid ID:</span> <span className="font-medium">{details.freelancerBidId}</span></div>}
+          {details.awardStatus && <div><span className="text-slate-500 dark:text-slate-400">Outcome:</span> <span className="font-medium">{details.awardStatus}</span></div>}
+          {details.message && <div className="col-span-2 text-slate-700 dark:text-slate-200 whitespace-pre-wrap">{details.message}</div>}
           {details.error && <div className="col-span-2 text-red-600 dark:text-red-400">Error: {details.error}</div>}
         </div>
       )

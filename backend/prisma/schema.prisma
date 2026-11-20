@@ -74,6 +74,22 @@ model User {
   // Account-wide proposal prompt; NULL means the shipped default (ChatGPT-prompt.md)
   proposalPrompt      String? @map("proposal_prompt")
 
+  // Client quality gate (services/bidding/clientScore.js): projects whose
+  // employer scores below the minimum, or that already carry more bids than
+  // the cap, are skipped before any OpenAI call.
+  minClientScore      Int     @default(35) @map("min_client_score")
+  maxProjectBids      Int     @default(40) @map("max_project_bids")
+
+  // Follow-up message to the client some hours after a bid with no reply
+  // (services/bidding/followUp.js) and the AI reply to a client's first message
+  // (services/messaging/messagePoller.js). Both off by default.
+  followUpEnabled     Boolean @default(false) @map("follow_up_enabled")
+  followUpHours       Int     @default(24) @map("follow_up_hours")
+  followUpMinScore    Int     @default(85) @map("follow_up_min_score")
+  autoReplyEnabled    Boolean @default(false) @map("auto_reply_enabled")
+  // Run the AI analytics review by itself about once a month
+  aiReviewAuto        Boolean @default(true) @map("ai_review_auto")
+
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
@@ -181,6 +197,27 @@ model Project {
   lastCheckedAt       DateTime? @map("last_checked_at")
   discoveredAt        DateTime  @default(now()) @map("discovered_at")
 
+  // Employer facts from the search response (services/freelancer/projectMapper.js)
+  // and the client score computed from them (services/bidding/clientScore.js).
+  ownerPaymentVerified  Boolean?  @map("owner_payment_verified")
+  ownerDepositMade      Boolean?  @map("owner_deposit_made")
+  ownerReviews          Int?      @map("owner_reviews")
+  ownerRating           Float?    @map("owner_rating")
+  ownerProjectsComplete Int?      @map("owner_projects_complete")
+  ownerProjectsAll      Int?      @map("owner_projects_all")
+  ownerRegisteredAt     DateTime? @map("owner_registered_at")
+  bidAvg                Float?    @map("bid_avg")
+  clientScore           Int?      @map("client_score")
+  clientScoreReasons    String?   @map("client_score_reasons")
+
+  // What the last automatic run decided about this project and why
+  // (bid | queued | skipped | error | waiting), see engine.js `decide`.
+  decision            String?   @map("decision")
+  decisionReason      String?   @map("decision_reason")
+  decisionDetail      String?   @map("decision_detail")
+  decidedAt           DateTime? @map("decided_at")
+  decisionProfileId   Int?      @map("decision_profile_id")
+
   bids     Bid[]
   meetings Meeting[]
 
@@ -202,6 +239,17 @@ model Bid {
   errorMessage        String?   @map("error_message")
   placedAt            DateTime? @map("placed_at")
   createdAt           DateTime  @default(now()) @map("created_at")
+
+  // Outcome tracking (services/bidding/outcomeSync.js, messagePoller.js):
+  // Freelancer's award_status for the bid (pending | awarded | rejected |
+  // revoked | canceled), when it was awarded, when the client first wrote
+  // back, when a follow-up was sent, and when Freelancer was last asked.
+  awardStatus         String?   @map("award_status")
+  awardedAt           DateTime? @map("awarded_at")
+  clientRepliedAt     DateTime? @map("client_replied_at")
+  followUpAt          DateTime? @map("follow_up_at")
+  followUpThreadId    Int?      @map("follow_up_thread_id")
+  lastSyncedAt        DateTime? @map("last_synced_at")
 
   user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   profile BiddingProfile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
@@ -251,6 +299,10 @@ model MessageThread {
   lastMessageFromClientAt DateTime? @map("last_message_from_client_at")
   lastMessageFromMeAt     DateTime? @map("last_message_from_me_at")
   lastMessageText         String?   @map("last_message_text")
+  // AI-drafted answer to the client's latest message, and when it was sent
+  // automatically (Settings → Auto-Bidding → Reply automatically).
+  draftReply              String?   @map("draft_reply")
+  autoRepliedAt           DateTime? @map("auto_replied_at")
   createdAt               DateTime  @default(now()) @map("created_at")
   updatedAt               DateTime  @updatedAt @map("updated_at")
 

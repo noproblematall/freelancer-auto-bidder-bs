@@ -40,6 +40,18 @@ async function getBids(client, { projectIds, bidIds, limit, offset } = {}) {
   return response.data.result;
 }
 
+// The account's own bids on a batch of projects, with their award_status
+// (pending | awarded | rejected | revoked | canceled), retracted flag and
+// frontend_bid_status. outcomeSync uses this to record wins and losses.
+async function getMyBidsForProjects(client, { bidderId, projectIds }) {
+  const ids = (projectIds || []).filter(Boolean);
+  if (!ids.length) return [];
+  const response = await client.get('/projects/0.1/bids/', {
+    params: { 'bidders[]': [bidderId], 'projects[]': ids, limit: Math.max(ids.length, 20) },
+  });
+  return response.data?.result?.bids || [];
+}
+
 // Attempt to seal a previously-placed bid via PUT ?action=seal (mirrors the
 // documented `action=highlight` / `action=sponsor` upgrade pattern). The
 // action isn't in the documented enum, so callers must verify by re-reading
@@ -86,4 +98,4 @@ async function retractBid(client, freelancerBidId) {
   return response.data;
 }
 
-module.exports = { MILESTONE_PERCENTAGE, placeBid, getBids, retractBid, sealBid, getBidById };
+module.exports = { MILESTONE_PERCENTAGE, placeBid, getBids, getMyBidsForProjects, retractBid, sealBid, getBidById };

@@ -11,7 +11,16 @@ const { analyzeProject } = require('../openai/analyzer');
 const { generateProposal } = require('../openai/proposalGenerator');
 const { applyAccountSettings } = require('./jobFilters');
 const { priceBid } = require('./pricing');
+const { projectDataFromApi, forPrisma } = require('../freelancer/projectMapper');
+const { getLearningSignals, learningBoost } = require('./learning');
 const logger = require('../../utils/logger');
+
+// Decision codes recorded on each project (Project.decisionReason) so the
+// Projects page can say why it was or was not bid on. Keep the labels in
+// frontend/src/utils/decisions.js in step with this list.
+const DECISION = {
+  bid: 'bid', queued: 'queued', skipped: 'skipped', error: 'error', waiting: 'waiting',
+};
 
 /**
  * Errors matching these patterns mean the account needs manual intervention.
@@ -160,8 +169,29 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
       freelancerClientId: true,
       freelancerClientSecret: true,
       sealBids: true,
+      minClientScore: true,
+      maxProjectBids: true,
     },
   });
+
+  // Why each project was or was not bid on this run. Written to the project
+  // rows at the end of the run (flushDecisions) so the Projects page can show
+  // it; only changed decisions are written to keep the per-minute runs cheap.
+  const decisions = new Map();
+  const decide = (project, decision, reason, detail) => {
+    decisions.set(project.id, { project, decision, reason, detail: detail ? String(detail).slice(0, 1000) : null });
+  };
+  const flushDecisions = async () => {
+    const now = new Date();
+    for (const { project, decision, reason, detail } of decisions.values()) {
+      if (project.decision === decision && project.decisionReason === reason && project.decisionDetail === detail && project.decidedAt) continue;
+      await prisma.project.update({
+        where: { id: project.id },
+        data: { decision, decisionReason: reason, decisionDetail: detail, decidedAt: now, decisionProfileId: profile.id },
+      }).catch((e) => logger.warn(`Could not record decision for project #${project.id}: ${e.message}`));
+    }
+    decisions.clear();
+  };
 
   // Resolve the plaintext access token — auto-refreshing if expired or expiring within 5 minutes
   let plainAccessToken = decrypt(tokenRecord.accessToken);
@@ -317,11 +347,12 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
     return results;
   }
 
-  // Step 4: Filter — upsert to DB, resolve owner country from multiple sources
+  // Step 4: Filter — upsert to DB. projectMapper resolves the owner country,
+  // the employer facts and the client score from the search response.
   const upsertedProjects = [];
   for (const p of freelancerProjects) {
-    // Look up owner's user data from the search response users object
-    const ownerUser = p.owner_id ? searchUsers[String(p.owner_id)] : null;
+    const mapped = projectDataFromApi(p, searchUsers);
+    const data = forPrisma(mapped);
 
     // Log data sources on first project for debugging
     if (upsertedProjects.length === 0) {
@@ -330,49 +361,11 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
         owner_info_city: p.owner_info?.city,
         project_location: p.location,
         currency_country: p.currency?.country,
+        employer_reputation: !!searchUsers[String(p.owner_id)]?.employer_reputation,
+        owner_status: !!searchUsers[String(p.owner_id)]?.status,
       })}`);
     }
-
-    // Resolve country: owner_info.country (per Freelancer support) > project location > true_location > users map
-    // Note: currency.country is NOT used — it returns zone codes like "EU" for Euro, not actual country codes
-    const rawCountry = p.owner_info?.country?.code
-      || p.location?.country?.code
-      || p.true_location?.country?.code
-      || ownerUser?.location?.country?.code
-      || null;
-    const ownerCountry = rawCountry ? rawCountry.toUpperCase() : null;
-
-    const countrySource = p.owner_info?.country?.code ? 'owner_info.country'
-      : p.location?.country?.code ? 'project.location'
-      : p.true_location?.country?.code ? 'project.true_location'
-      : ownerUser?.location?.country?.code ? 'users[owner].location'
-      : 'none';
-    logger.info(`Project #${p.id}: owner country = ${ownerCountry} (source: ${countrySource})`);
-
-    // Store full location object for rich data: use owner_info city+country for richer data
-    const ownerLocationObj = p.owner_info?.country
-      ? { country: p.owner_info.country, city: p.owner_info.city || null }
-      : p.location || p.true_location || null;
-    const ownerLocation = ownerLocationObj ? JSON.stringify(ownerLocationObj) : null;
-
-    const data = {
-      freelancerProjectId: p.id,
-      title: p.title || 'Untitled',
-      description: p.preview_description || p.description || null,
-      budgetMin: p.budget?.minimum ?? null,
-      budgetMax: p.budget?.maximum ?? null,
-      currency: p.currency?.code || 'USD',
-      language: p.language ? String(p.language).toLowerCase() : null,
-      jobIds: p.jobs ? JSON.stringify(p.jobs.map(j => ({ id: j.id, name: j.name }))) : null,
-      ownerId: p.owner_id ?? null,
-      ownerCountry: ownerCountry,
-      ownerLocation: ownerLocation,
-      bidCount: p.bid_stats?.bid_count ?? 0,
-      timeSubmitted: p.time_submitted ? new Date(p.time_submitted * 1000) : null,
-      status: p.status || 'active',
-      projectType: p.type || null,
-      lastCheckedAt: new Date(),
-    };
+    logger.info(`Project #${p.id}: owner country = ${data.ownerCountry} (source: ${mapped._countrySource}), client score ${data.clientScore}`);
 
     const record = await prisma.project.upsert({
       where: { freelancerProjectId: p.id },
@@ -471,8 +464,14 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
         if (!p.ownerCountry) return true; // include projects with unknown country
         const code = p.ownerCountry.toUpperCase();
         if (countryExceptions.has(code)) return true; // exception overrides everything
-        if (excludedSet.has(code)) return false; // explicitly excluded country
-        if (isCountryInExcludedRegion(code, excludedRegions)) return false; // region excluded
+        if (excludedSet.has(code)) { // explicitly excluded country
+          decide(p, DECISION.skipped, 'excluded_country', `The client is in ${code}, which your Job Filters exclude.`);
+          return false;
+        }
+        if (isCountryInExcludedRegion(code, excludedRegions)) { // region excluded
+          decide(p, DECISION.skipped, 'excluded_region', `The client is in ${code}, inside a region your Job Filters exclude.`);
+          return false;
+        }
         return true;
       });
 
@@ -494,7 +493,11 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
       const beforeCurrencyFilter = newProjects.length;
       newProjects = newProjects.filter(p => {
         if (!p.currency) return true; // unknown currency — fail open
-        return !excludedCurrencySet.has(String(p.currency).toUpperCase());
+        if (excludedCurrencySet.has(String(p.currency).toUpperCase())) {
+          decide(p, DECISION.skipped, 'excluded_currency', `The project is priced in ${String(p.currency).toUpperCase()}, which your Job Filters exclude.`);
+          return false;
+        }
+        return true;
       });
       const filteredOut = beforeCurrencyFilter - newProjects.length;
       if (filteredOut > 0) {
@@ -538,6 +541,9 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
 
         const passes = minOk && maxOk;
         logger.info(`Project #${p.id}: fixed-price $${p.budgetMin}-${p.budgetMax}, filter: $${profile.budgetMinFixed || '∞'}-${profile.budgetMaxFixed || '∞'}, passes: ${passes}`);
+        if (!passes) {
+          decide(p, DECISION.skipped, 'budget', `Fixed budget ${p.budgetMin ?? '?'}–${p.budgetMax ?? '?'} ${p.currency} is outside this profile's fixed-price range ${profile.budgetMinFixed ?? 'any'}–${profile.budgetMaxFixed ?? 'any'}.`);
+        }
         return passes;
       }
 
@@ -561,6 +567,9 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
 
         const passes = minOk && maxOk;
         logger.info(`Project #${p.id}: hourly $${p.budgetMin}-${p.budgetMax}/hr, filter: $${profile.budgetMinHourly || '∞'}-${profile.budgetMaxHourly || '∞'}, passes: ${passes}`);
+        if (!passes) {
+          decide(p, DECISION.skipped, 'budget', `Hourly rate ${p.budgetMin ?? '?'}–${p.budgetMax ?? '?'} ${p.currency}/h is outside this profile's hourly range ${profile.budgetMinHourly ?? 'any'}–${profile.budgetMaxHourly ?? 'any'}.`);
+        }
         return passes;
       }
 
@@ -582,6 +591,48 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
   );
   if (staleFiltered.length > 0) {
     logger.info(`Profile "${profile.name}": pre-filtered ${staleFiltered.length} stale projects (cached score < ${profile.minRelevanceScore}): ${staleFiltered.map(p => `#${p.id}(${p.relevanceScore})`).join(', ')}`);
+    for (const p of staleFiltered) {
+      decide(p, DECISION.skipped, 'low_score', `AI relevance score ${p.relevanceScore} is below this profile's minimum of ${profile.minRelevanceScore}.`);
+    }
+  }
+
+  // Past clients get a relevance boost below and bypass the client-quality gate.
+  const convertedClientOwnerIds = new Set();
+  try {
+    const convertedClients = await prisma.client.findMany({
+      where: { userId: profile.userId },
+      select: { freelancerUserId: true },
+    });
+    convertedClients.forEach(c => convertedClientOwnerIds.add(c.freelancerUserId));
+    if (convertedClientOwnerIds.size > 0) {
+      logger.info(`Profile "${profile.name}": ${convertedClientOwnerIds.size} past client(s) will get +15 relevance boost`);
+    }
+  } catch (e) {
+    logger.warn(`Profile "${profile.name}": failed to load past clients: ${e.message}`);
+  }
+
+  // Client-quality gate (Settings → Auto-Bidding): skip crowded projects and
+  // clients unlikely to hire before any OpenAI call is spent on them.
+  {
+    const minClientScore = Number.isInteger(user?.minClientScore) ? user.minClientScore : 35;
+    const maxProjectBids = Number.isInteger(user?.maxProjectBids) ? user.maxProjectBids : 40;
+    const before = newProjects.length;
+    newProjects = newProjects.filter(p => {
+      if (p.ownerId && convertedClientOwnerIds.has(p.ownerId)) return true;
+      if (maxProjectBids > 0 && typeof p.bidCount === 'number' && p.bidCount > maxProjectBids) {
+        decide(p, DECISION.skipped, 'too_many_bids', `${p.bidCount} bids were already on the project; your cap is ${maxProjectBids} (Settings → Auto-Bidding → Max bids on a project).`);
+        return false;
+      }
+      if (minClientScore > 0 && typeof p.clientScore === 'number' && p.clientScore < minClientScore) {
+        const why = p.clientScoreReasons ? ` ${p.clientScoreReasons.split('\n').join('; ')}.` : '';
+        decide(p, DECISION.skipped, 'low_client_score', `Client score ${p.clientScore} is below your minimum of ${minClientScore} (Settings → Auto-Bidding).${why}`);
+        return false;
+      }
+      return true;
+    });
+    if (before !== newProjects.length) {
+      logger.info(`Profile "${profile.name}": client-quality gate skipped ${before - newProjects.length} project(s) (min client score ${minClientScore}, max ${maxProjectBids} bids)`);
+    }
   }
 
   results.filtered = newProjects.length;
@@ -604,26 +655,18 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
     return true;
   });
 
-  // Load converted client owner IDs for relevance score boost
-  const convertedClientOwnerIds = new Set();
-  try {
-    const convertedClients = await prisma.client.findMany({
-      where: { userId: profile.userId },
-      select: { freelancerUserId: true },
-    });
-    convertedClients.forEach(c => convertedClientOwnerIds.add(c.freelancerUserId));
-    if (convertedClientOwnerIds.size > 0) {
-      logger.info(`Profile "${profile.name}": ${convertedClientOwnerIds.size} past client(s) will get +15 relevance boost`);
-    }
-  } catch (e) {
-    logger.warn(`Profile "${profile.name}": failed to load past clients: ${e.message}`);
-  }
+  // What the account's own replies and awards say about skills and countries
+  // (services/bidding/learning.js); nudges the relevance score by a few points.
+  const learning = await getLearningSignals(profile.userId);
 
   // Steps 5-10: Analyze, Qualify, Generate, Price, Place, Log
   let bidsPlacedThisRun = 0;
 
   for (const project of newProjects) {
-    if (bidsPlacedThisRun >= maxBidsThisRun) break;
+    if (bidsPlacedThisRun >= maxBidsThisRun) {
+      decide(project, DECISION.waiting, 'not_reached', 'The bid cap for this run was reached before this project was looked at. It will be considered on a later run.');
+      continue;
+    }
 
     let bidRecord = null;
     try {
@@ -644,6 +687,7 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
           logger.error(`analyzeProject failed for project #${project.id}: ${analyzeErr.message}`);
           results.errors++;
           if (!results.openaiError) results.openaiError = analyzeErr.message;
+          decide(project, DECISION.error, 'analyze_error', `The AI relevance check failed: ${analyzeErr.message}`);
           continue;
         }
         await prisma.project.update({
@@ -653,16 +697,35 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
       }
       results.analyzed++;
 
+      // Adjustments on top of the AI score, each named so the decision can say so.
+      const rawScore = analysis.relevance_score;
+      const adjustments = [];
+
       // Apply +15 boost for past clients (capped at 100)
       if (project.ownerId && convertedClientOwnerIds.has(project.ownerId)) {
         const boosted = Math.min(100, analysis.relevance_score + 15);
         logger.info(`Project #${project.id}: past client boost applied (${analysis.relevance_score} → ${boosted})`);
         analysis = { ...analysis, relevance_score: boosted };
+        adjustments.push('+15 past client');
       }
+
+      // Learned from this account's replies and awards (services/bidding/learning.js)
+      {
+        const { boost, reasons } = learningBoost(learning, project);
+        if (boost) {
+          const adjusted = Math.max(0, Math.min(100, analysis.relevance_score + boost));
+          logger.info(`Project #${project.id}: learned adjustment ${boost > 0 ? '+' : ''}${boost} (${reasons.join('; ')}) → ${adjusted}`);
+          analysis = { ...analysis, relevance_score: adjusted };
+          adjustments.push(...reasons);
+        }
+      }
+      const scoreNote = adjustments.length ? `AI relevance score ${rawScore}, adjusted to ${analysis.relevance_score} (${adjustments.join('; ')})` : `AI relevance score ${rawScore}`;
 
       // Step 6: Qualify
       if (analysis.relevance_score < profile.minRelevanceScore) {
         logger.info(`Project #${project.id} below threshold (${analysis.relevance_score} < ${profile.minRelevanceScore})`);
+        const why = Array.isArray(analysis.relevance_reasons) && analysis.relevance_reasons.length ? ` ${analysis.relevance_reasons.slice(0, 3).join('; ')}.` : '';
+        decide(project, DECISION.skipped, 'low_score', `${scoreNote} is below this profile's minimum of ${profile.minRelevanceScore}.${why}`);
         continue;
       }
       results.qualified++;
@@ -673,12 +736,14 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
         const generated = await generateProposal(openai, project, profile);
         if (generated.skipped) {
           logger.info(`Project #${project.id}: skipped — ${generated.reason}`);
+          decide(project, DECISION.skipped, 'prompt_skip', `${scoreNote} qualified, but the proposal prompt's rules say not to bid: ${generated.reason}.`);
           continue;
         }
         ({ proposalText } = generated);
       } catch (err) {
         logger.error(`generateProposal failed for project #${project.id}: ${err.message}`);
         results.errors++;
+        decide(project, DECISION.error, 'proposal_error', `${scoreNote} qualified, but writing the proposal failed: ${err.message}`);
         continue;
       }
 
@@ -691,6 +756,7 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
       } catch (priceErr) {
         logger.warn(`Profile "${profile.name}": ${priceErr.message} — skipping project #${project.id}`);
         results.errors++;
+        decide(project, DECISION.error, 'pricing_error', `${scoreNote} qualified, but the bid could not be priced: ${priceErr.message}`);
         continue;
       }
 
@@ -731,6 +797,7 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
           },
         }).catch(() => {});
         logger.info(`Project #${project.id}: queued for review (bid #${bidRecord.id}, $${bidAmount}) — review mode on`);
+        decide(project, DECISION.queued, 'queued', `${scoreNote}. A draft bid of ${bidAmount} ${project.currency} is waiting for your review on the Bid History page.`);
         results.queued++;
         bidsPlacedThisRun++;
         continue;
@@ -851,6 +918,7 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
         results.placed++;
         bidsPlacedThisRun++;
         logger.info(`Auto-bid placed: project #${project.id}, $${bidAmount}, profile "${profile.name}"`);
+        decide(project, DECISION.bid, 'bid', `${scoreNote}. Bid of ${bidAmount} ${project.currency} placed${sealedActual ? ' (sealed)' : ''}.`);
 
         // Telegram bid-placed notification
         if (tgBidEnabled) {
@@ -894,6 +962,7 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
 
         results.errors++;
         logger.error(`Auto-bid failed: project #${project.id}, error: ${placeErr.message}`);
+        decide(project, DECISION.error, 'bid_error', `${scoreNote}. Freelancer rejected the bid: ${placeErr.message}`);
 
         // Telegram bid-error notification
         if (tgBidEnabled) {
@@ -921,6 +990,7 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
 
       results.errors++;
       logger.error(`Pipeline error for project #${project.id}: ${err.message}`);
+      decide(project, DECISION.error, 'pipeline_error', `Unexpected error while processing the project: ${err.message}`);
       // If bidRecord was created before the error, mark it as failed so it doesn't
       // stay in 'pending' indefinitely.
       if (bidRecord) {
@@ -932,7 +1002,8 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
     }
   }
 
+  await flushDecisions();
   return results;
 }
 
-module.exports = { runProfilePipeline, remainingBidBudget, FatalBidError };
+module.exports = { runProfilePipeline, remainingBidBudget, FatalBidError, DECISION };

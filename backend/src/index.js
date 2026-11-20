@@ -139,6 +139,15 @@ const server = app.listen(env.port, '127.0.0.1', () => {
   const { startPoller } = require('./services/messaging/messagePoller');
   startPoller();
 
+  // Ask Freelancer what became of placed bids (awards, losses, missed replies)
+  // 90 s after start and every 30 minutes; monthly AI review when enabled.
+  const { startOutcomeSync } = require('./services/bidding/outcomeSync');
+  startOutcomeSync();
+
+  // One follow-up message per unanswered bid, when enabled in Settings (hourly)
+  const { startFollowUps } = require('./services/bidding/followUp');
+  startFollowUps();
+
   // Start the Telegram command poller (/start, /stop, /status — checks every 10s)
   const { startCommandPoller } = require('./services/messaging/telegramCommandPoller');
   startCommandPoller();

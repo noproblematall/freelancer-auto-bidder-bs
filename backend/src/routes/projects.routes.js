@@ -8,46 +8,19 @@ const { analyzeProject } = require('../services/openai/analyzer');
 const { generateProposal } = require('../services/openai/proposalGenerator');
 const { applyAccountSettings, loadJobFilters, matchesJobFilters, jobFiltersWhere, languageList } = require('../services/bidding/jobFilters');
 const { decrypt } = require('../utils/tokenManager');
+const { projectDataFromApi, forPrisma } = require('../services/freelancer/projectMapper');
 const logger = require('../utils/logger');
 
 const router = express.Router();
 
 router.use(authMiddleware);
 
-// Upsert projects from Freelancer API into local DB
-async function upsertProjects(freelancerProjects) {
+// Upsert projects from Freelancer API into local DB (same mapping as the
+// bidding engine, including the employer facts and client score).
+async function upsertProjects(freelancerProjects, users = {}) {
   const upserted = [];
   for (const p of freelancerProjects) {
-    // Resolve owner country — owner_info.country is the correct source per Freelancer support
-    // Note: currency.country is NOT used — it returns zone codes like "EU" for Euro, not actual country codes
-    const rawCountry = p.owner_info?.country?.code
-      || p.location?.country?.code
-      || p.true_location?.country?.code
-      || null;
-    const ownerCountry = rawCountry ? rawCountry.toUpperCase() : null;
-    const ownerLocationObj = p.owner_info?.country
-      ? { country: p.owner_info.country, city: p.owner_info.city || null }
-      : p.location || p.true_location || null;
-    const ownerLocation = ownerLocationObj ? JSON.stringify(ownerLocationObj) : null;
-
-    const data = {
-      freelancerProjectId: p.id,
-      title: p.title || 'Untitled',
-      description: p.preview_description || p.description || null,
-      budgetMin: p.budget?.minimum ?? null,
-      budgetMax: p.budget?.maximum ?? null,
-      currency: p.currency?.code || 'USD',
-      language: p.language ? String(p.language).toLowerCase() : null,
-      jobIds: p.jobs ? JSON.stringify(p.jobs.map(j => ({ id: j.id, name: j.name }))) : null,
-      ownerId: p.owner_id ?? null,
-      ownerCountry: ownerCountry,
-      ownerLocation: ownerLocation,
-      bidCount: p.bid_stats?.bid_count ?? 0,
-      timeSubmitted: p.time_submitted ? new Date(p.time_submitted * 1000) : null,
-      status: p.status || 'active',
-      projectType: p.type || null,
-      lastCheckedAt: new Date(),
-    };
+    const data = forPrisma(projectDataFromApi(p, users));
 
     const record = await prisma.project.upsert({
       where: { freelancerProjectId: p.id },
@@ -79,7 +52,7 @@ router.post('/search', flClient, async (req, res, next) => {
       offset: offset || 0,
     });
 
-    const found = await upsertProjects(result.projects || []);
+    const found = await upsertProjects(result.projects || [], result.users || {});
     const projects = found.filter(p => matchesJobFilters(p, jobFilters));
 
     res.json({

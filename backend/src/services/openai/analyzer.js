@@ -9,6 +9,29 @@ const { ANALYSIS_MODEL } = require('./client');
 const SYSTEM_PROMPT = `You are an expert freelancer assistant that analyzes project postings.
 You MUST respond with valid JSON only.`;
 
+// What is known about the employer (services/freelancer/projectMapper.js), as a
+// prompt block. Shared with the proposal generator so both see the same facts.
+function describeClient(project) {
+  const lines = [];
+  if (project.ownerPaymentVerified === true) lines.push('payment verified');
+  else if (project.ownerPaymentVerified === false) lines.push('payment NOT verified');
+  if (project.ownerDepositMade) lines.push('has made a deposit');
+  if (typeof project.ownerReviews === 'number') {
+    lines.push(project.ownerReviews > 0
+      ? `${project.ownerReviews} review${project.ownerReviews === 1 ? '' : 's'} from freelancers${typeof project.ownerRating === 'number' ? `, rated ${project.ownerRating.toFixed(1)}/5` : ''}`
+      : 'no reviews yet (may be hiring for the first time)');
+  }
+  if (typeof project.ownerProjectsAll === 'number' && project.ownerProjectsAll > 0) {
+    lines.push(`${project.ownerProjectsComplete ?? 0} of ${project.ownerProjectsAll} posted projects completed`);
+  }
+  if (project.ownerCountry) lines.push(`country ${project.ownerCountry}`);
+  if (typeof project.bidCount === 'number') {
+    lines.push(`${project.bidCount} bids so far${typeof project.bidAvg === 'number' && project.bidAvg > 0 ? `, average bid ${Math.round(project.bidAvg)} ${project.currency || 'USD'}` : ''}`);
+  }
+  if (!lines.length) return '';
+  return `\nCLIENT:\n- ${lines.join('\n- ')}\n`;
+}
+
 function buildUserPrompt(project, profile) {
   const skills = project.jobNames
     ? project.jobNames.map(j => j.name).join(', ')
@@ -31,7 +54,7 @@ PROJECT:
 - Budget: ${project.budgetMin || '?'} - ${project.budgetMax || '?'} ${project.currency || 'USD'}
 - Skills Required: ${skills}
 - Project Type: ${project.projectType ? kind : 'Not specified'}
-
+${describeClient(project)}
 FREELANCER PROFILE:
 - Skills: ${userSkills}
 - Experience: ${experience}
@@ -93,4 +116,4 @@ async function analyzeProject(openaiClient, project, profile) {
   return analysis;
 }
 
-module.exports = { analyzeProject };
+module.exports = { analyzeProject, describeClient };

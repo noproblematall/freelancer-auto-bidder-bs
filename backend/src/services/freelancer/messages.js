@@ -72,4 +72,46 @@ async function getMessagesFromThread(client, threadId, limit = 5) {
   return result?.messages || [];
 }
 
-module.exports = { getThreadsSince, getMessagesFromThread };
+/**
+ * Post a message into an existing thread.
+ * POST /messages/0.1/threads/{id}/messages/ (form-encoded `message`).
+ */
+async function sendMessage(client, threadId, text) {
+  const response = await client.post(
+    `/messages/0.1/threads/${threadId}/messages/`,
+    serializeParams({ message: text }),
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+  );
+  return response.data?.result || null;
+}
+
+/**
+ * Start (or reuse) the project thread with the client and post a message.
+ * POST /messages/0.1/threads/ with context_type=project, context=<project id>
+ * and the client as member. Freelancer returns the existing thread when one
+ * already exists for that project and pair of users.
+ */
+async function createProjectThread(client, { projectId, memberIds, text }) {
+  const params = { context_type: 'project', context: projectId, message: text };
+  const body = serializeParams(params) + (memberIds || []).map((id) => `&members[]=${encodeURIComponent(id)}`).join('');
+  const response = await client.post('/messages/0.1/threads/', body, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  });
+  return response.data?.result || null;
+}
+
+/**
+ * Threads for a set of projects (any update time), used to find a client's
+ * reply to a bid even when the app was closed when it arrived.
+ */
+async function getProjectThreads(client, projectIds, limit = 50) {
+  const ids = (projectIds || []).filter(Boolean);
+  if (!ids.length) return { threads: [], users: {} };
+  const params = { context_type: 'project', limit, message_details: true, user_details: true };
+  const query = serializeParams(params) + ids.map((id) => `&contexts[]=${encodeURIComponent(id)}`).join('');
+  const response = await client.get(`/messages/0.1/threads/?${query}`);
+  const result = response.data?.result;
+  return { threads: result?.threads || [], users: result?.users || {} };
+}
+
+module.exports = { getThreadsSince, getMessagesFromThread, sendMessage, createProjectThread, getProjectThreads };

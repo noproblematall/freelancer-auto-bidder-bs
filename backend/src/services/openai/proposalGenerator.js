@@ -1,6 +1,7 @@
 const logger = require('../../utils/logger');
 const { getProposalPrompt } = require('./promptLoader');
 const { detectBotFilter, prependBotFilter } = require('../../utils/botFilterDetector');
+const { describeClient } = require('./analyzer');
 
 const SYSTEM_PROMPT = `You are a bid-writing assistant for freelancer.com. Follow ALL of the rules in the user message exactly. Do not deviate from any of them.`;
 
@@ -20,6 +21,12 @@ PROJECT:
 - Description: ${project.description || 'No description provided.'}
 - Budget: ${project.budgetMin || '?'} - ${project.budgetMax || '?'} ${project.currency || 'USD'}
 - Required Skills: ${skills}`;
+
+  // Who the client is, so the bid can meet them where they are: a first-time
+  // client needs reassurance and a clear first step, an experienced one wants
+  // competence and no hand-holding.
+  const clientBlock = describeClient(project);
+  if (clientBlock) prompt += `\n${clientBlock.trimEnd()}`;
 
   // Inject profile context so the AI can personalize the proposal
   if (profile?.skillsSummary || profile?.experienceSummary || profile?.portfolioHighlights) {

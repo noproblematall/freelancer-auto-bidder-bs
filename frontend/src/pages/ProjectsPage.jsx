@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { useProjects } from '../hooks/useProjects'
 import { timeAgo, formatBudget } from '../utils/formatters'
 import ProjectDetailModal from '../components/Projects/ProjectDetailModal'
+import { decisionLabel, decisionTone, decisionDetail } from '../utils/decisions'
 import api from '../services/api'
 
 const LIMIT = 20
@@ -374,17 +375,39 @@ export default function ProjectsPage() {
                       {formatBudget(project.budgetMin, project.budgetMax, project.currency)}
                     </p>
                     <div className="flex items-center gap-3 mt-1.5 text-xs text-slate-500 dark:text-slate-400 justify-end flex-wrap">
-                      {project.relevanceScore != null ? (
+                      {project.relevanceScore != null && (
                         <span className={`font-medium px-1.5 py-0.5 rounded ${
                           project.relevanceScore >= 70
                             ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
                             : project.relevanceScore >= 40
                               ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
                               : 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400'
-                        }`}>
+                        }`} title="AI relevance score">
                           {project.relevanceScore}%
                         </span>
-                      ) : (() => {
+                      )}
+                      {project.clientScore != null && (
+                        <span className={`font-medium px-1.5 py-0.5 rounded ${
+                          project.clientScore >= 65
+                            ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                            : project.clientScore >= 35
+                              ? 'bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300'
+                              : 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                        }`} title={`Client score ${project.clientScore}/100${project.clientScoreReasons ? `\n${project.clientScoreReasons}` : ''}`}>
+                          client {project.clientScore}
+                        </span>
+                      )}
+                      {(() => {
+                        // The engine's own decision wins; the heuristic covers rows from before decisions were recorded
+                        const label = decisionLabel(project)
+                        if (label) {
+                          return (
+                            <span className={`font-medium px-1.5 py-0.5 rounded ${decisionTone(project)}`} title={decisionDetail(project)}>
+                              {label}
+                            </span>
+                          )
+                        }
+                        if (project.relevanceScore != null) return null
                         const skipReason = getDetailedSkipReason(project, activeProfiles, userBids)
                         return (
                           <span
