@@ -15,6 +15,17 @@ router.use(authMiddleware);
 
 const PERIODS = { '7d': 7, '30d': 30, '90d': 90, all: null };
 const AI_REPORT_ACTION = 'ai_analytics_report';
+// The review is one big reasoning call; give it well beyond the client's 60 s default.
+const AI_TIMEOUT_MS = Number(process.env.AI_ANALYTICS_TIMEOUT_MS) || 170000;
+
+// Models sometimes wrap JSON in ``` fences or add a sentence around it.
+function parseReport(content) {
+  const text = String(content || '').trim();
+  try { return JSON.parse(text); } catch { /* fall through */ }
+  const m = text.match(/\{[\s\S]*\}/);
+  if (m) { try { return JSON.parse(m[0]); } catch { /* fall through */ } }
+  return { headline: text.slice(0, 500), raw: text };
+}
 const WON = new Set(['converted']);
 const SENT = new Set(['placed', 'converted', 'rejected', 'retracted']); // reached Freelancer
 
@@ -355,9 +366,16 @@ router.post('/ai', async (req, res, next) => {
         `Respond with JSON only, matching this shape: ${REPORT_SCHEMA}` },
       { role: 'user', content: `Analytics period: ${period}. Data:\n${JSON.stringify(data)}` },
     ];
-    const { content, modelUsed } = await openai.chat({ messages, response_format: { type: 'json_object' }, max_tokens: 3000, temperature: 0.4 });
-    let report;
-    try { report = JSON.parse(content); } catch { report = { headline: content.slice(0, 500), raw: content }; }
+    let content, modelUsed;
+    try {
+      ({ content, modelUsed } = await openai.chat({ messages, response_format: { type: 'json_object' }, max_tokens: 3000, temperature: 0.4, timeout: AI_TIMEOUT_MS }));
+    } catch (err) {
+      // Surface the real reason (the generic handler hides messages in production).
+      logger.error({ err }, 'AI analytics review failed');
+      const msg = String(err.message || 'OpenAI request failed').replace(/^OpenAI API error: /, '');
+      return res.status(502).json({ error: /timeout/i.test(msg) ? `The AI review took too long (${msg}). Try again, or pick a faster model in Settings.` : `AI review failed: ${msg}` });
+    }
+    const report = parseReport(content);
     await prisma.activityLog.create({
       data: { userId: req.userId, action: AI_REPORT_ACTION, details: JSON.stringify({ message: `AI analytics review generated (${period}): ${report.headline || ''}`.slice(0, 500), period, model: modelUsed, report }) },
     });

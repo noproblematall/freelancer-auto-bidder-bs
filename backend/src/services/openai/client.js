@@ -35,7 +35,7 @@ function isBillingError(err) {
 
 function createOpenAIClient(apiKey, model = 'gpt-5.4-mini') {
   const client = axios.create({
-    baseURL: 'https://api.openai.com/v1',
+    baseURL: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
@@ -43,7 +43,7 @@ function createOpenAIClient(apiKey, model = 'gpt-5.4-mini') {
     timeout: 60000,
   });
 
-  async function chatWithModel(activeModel, { messages, temperature = 0.7, max_tokens = 1000, response_format }) {
+  async function chatWithModel(activeModel, { messages, temperature = 0.7, max_tokens = 1000, response_format, timeout }) {
     // gpt-5.x, o1, o3, o4 reasoning families only accept the default
     // temperature (1) and take `max_completion_tokens`, not `max_tokens`.
     // That cap covers hidden reasoning tokens as well as the visible answer,
@@ -64,7 +64,9 @@ function createOpenAIClient(apiKey, model = 'gpt-5.4-mini') {
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
         const start = Date.now();
-        const response = await client.post('/chat/completions', body);
+        // Long jobs (the analytics review reads the whole bidding picture and
+        // writes a few thousand tokens) override the 60 s default per call.
+        const response = await client.post('/chat/completions', body, timeout ? { timeout } : undefined);
         const duration = Date.now() - start;
 
         const choice = response.data.choices?.[0];
@@ -123,6 +125,8 @@ function createOpenAIClient(apiKey, model = 'gpt-5.4-mini') {
         return await chatWithModel(FALLBACK_MODEL, options);
       }
       if (err instanceof EmptyResponseError) throw new Error(`OpenAI API error: ${err.message}`);
+      // chatWithModel already prefixed its own errors; don't prefix twice.
+      if (/^OpenAI API error: /.test(err.message || '')) throw err;
       const errorMsg = err.response?.data?.error?.message || err.message;
       throw new Error(`OpenAI API error: ${errorMsg}`);
     }
