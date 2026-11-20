@@ -85,7 +85,7 @@ function WinningBidStudy({ report, createdAt, model }) {
 }
 
 function WinningBidsTab() {
-  const [period, setPeriod] = useState('90d')
+  const [period, setPeriod] = useState('30d')
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -107,9 +107,14 @@ function WinningBidsTab() {
     setSyncing(true); setSyncMsg(null)
     try {
       const r = await syncWinningBids()
-      setSyncMsg(r.error ? r.error : `${r.captured} winning bid${r.captured === 1 ? '' : 's'} fetched (${r.checked} decided project${r.checked === 1 ? '' : 's'} checked)`)
+      const parts = [`${r.captured} winning bid${r.captured === 1 ? '' : 's'} fetched from ${r.checked} decided project${r.checked === 1 ? '' : 's'}`]
+      if (r.noWinner) parts.push(`${r.noWinner} without a visible winner`)
+      if (r.remaining) parts.push(`${r.remaining} more to fetch — click again`)
+      if (r.checked === 0 && !r.remaining) parts.push('nothing new: every decided project among your last 500 bids already has its winner, or none is decided yet')
+      const failed = r.errors?.length ? ` · ${r.errors.length} failed: ${r.errors[0]}` : ''
+      setSyncMsg({ text: parts.join(' · ') + failed, error: !!r.errors?.length && r.captured === 0 })
       await load(period)
-    } catch (e) { setSyncMsg(errText(e)) } finally { setSyncing(false) }
+    } catch (e) { setSyncMsg({ text: errText(e), error: true }) } finally { setSyncing(false) }
   }
   async function handleStudy() {
     setStudying(true); setStudyError(null)
@@ -125,11 +130,12 @@ function WinningBidsTab() {
           <select value={period} onChange={(e) => setPeriod(e.target.value)} className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-white/10 bg-white dark:bg-navy-900 dark:text-white">
             <option value="30d">Last 30 days</option><option value="90d">Last 90 days</option><option value="180d">Last 180 days</option><option value="all">All time</option>
           </select>
-          <button onClick={handleSync} disabled={syncing} className={BTN_SOFT}>{syncing ? <Spinner /> : null}{syncing ? 'Fetching…' : 'Fetch winning bids'}</button>
-          <button onClick={handleStudy} disabled={studying} className={BTN_PRIMARY}>{studying ? <Spinner /> : '✦'}{studying ? 'Studying…' : 'AI: what wins'}</button>
+          <button onClick={handleSync} disabled={syncing || studying} className={BTN_SOFT}>{syncing ? <Spinner /> : null}{syncing ? 'Fetching from Freelancer…' : 'Fetch winning bids'}</button>
+          <button onClick={handleStudy} disabled={studying || syncing} className={BTN_PRIMARY}>{studying ? <Spinner /> : '✦'}{studying ? 'Studying…' : 'AI: what wins'}</button>
         </div>
       </div>
-      {syncMsg && <p className="text-xs text-slate-600 dark:text-slate-300">{syncMsg}</p>}
+      {syncing && <p className="text-xs text-slate-600 dark:text-slate-300 inline-flex items-center gap-2"><Spinner /> Reading the bids on each decided project from Freelancer (one request per project, up to 50 per click)…</p>}
+      {syncMsg && !syncing && <p className={`text-xs ${syncMsg.error ? 'text-red-600 dark:text-red-400 font-medium' : 'text-slate-600 dark:text-slate-300'}`}>{syncMsg.text}</p>}
       {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 text-sm text-red-700 dark:text-red-300">{error}</div>}
 
       {(study?.report || studying || studyError) && (
@@ -355,7 +361,7 @@ function ClientDetail({ client, onClose }) {
 }
 
 function ClientsTab() {
-  const [period, setPeriod] = useState('90d')
+  const [period, setPeriod] = useState('30d')
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)

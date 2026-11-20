@@ -66,37 +66,46 @@ function RateTable({ rows, label, empty = 'No bids in this period' }) {
   const max = Math.max(...rows.map((r) => r.replyRate || 0), 1)
   const total = rows.reduce((a, r) => a + r.sent, 0)
   const few = (r) => r.sent < 10
+  // Six columns have to fit a one-third-width card: the label column takes
+  // the slack, numbers stay narrow, and the bar is short.
   return (
-    <table className="w-full text-sm">
+    <table className="w-full text-sm table-fixed">
+      <colgroup>
+        <col />
+        <col className="w-11" />
+        <col className="w-14" />
+        <col className="w-11" />
+        <col className="w-[5.5rem]" />
+        <col className="w-11" />
+      </colgroup>
       <thead>
         <tr className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
           <th className="text-left font-medium pb-2">{label}</th>
-          <th className="text-right font-medium pb-2 pl-2">Sent</th>
-          <th className="text-right font-medium pb-2 pl-2">Replied</th>
-          <th className="text-right font-medium pb-2 pl-2">Won</th>
-          <th className="text-right font-medium pb-2 pl-2 w-32">Reply rate</th>
-          <th className="text-right font-medium pb-2 pl-2">Win</th>
+          <th className="text-right font-medium pb-2 pl-1">Sent</th>
+          <th className="text-right font-medium pb-2 pl-1">Replied</th>
+          <th className="text-right font-medium pb-2 pl-1">Won</th>
+          <th className="text-right font-medium pb-2 pl-1">Reply</th>
+          <th className="text-right font-medium pb-2 pl-1">Win</th>
         </tr>
       </thead>
       <tbody>
         {rows.map((r) => (
           <tr key={r.key} className="border-t border-slate-100 dark:border-white/5">
-            <td className="py-1.5 text-navy-950 dark:text-white">
+            <td className="py-1.5 text-navy-950 dark:text-white truncate" title={total > 0 ? `${r.key} · ${Math.round((r.sent / total) * 100)}% of bids sent` : r.key}>
               {r.key}
-              {total > 0 && <span className="ml-1.5 text-[11px] text-slate-400">{Math.round((r.sent / total) * 100)}%</span>}
             </td>
-            <td className="py-1.5 pl-2 text-right tabular-nums text-slate-700 dark:text-slate-200">{n(r.sent)}</td>
-            <td className="py-1.5 pl-2 text-right tabular-nums text-slate-700 dark:text-slate-200">{n(r.replied)}</td>
-            <td className="py-1.5 pl-2 text-right tabular-nums text-slate-700 dark:text-slate-200">{n(r.won)}</td>
-            <td className="py-1.5 pl-3">
-              <div className="flex items-center gap-2 justify-end">
-                <div className="h-1.5 w-16 rounded-full bg-slate-100 dark:bg-white/10 overflow-hidden">
+            <td className="py-1.5 pl-1 text-right tabular-nums text-slate-700 dark:text-slate-200">{n(r.sent)}</td>
+            <td className="py-1.5 pl-1 text-right tabular-nums text-slate-700 dark:text-slate-200">{n(r.replied)}</td>
+            <td className="py-1.5 pl-1 text-right tabular-nums text-slate-700 dark:text-slate-200">{n(r.won)}</td>
+            <td className="py-1.5 pl-1">
+              <div className="flex items-center gap-1.5 justify-end">
+                <div className="h-1.5 w-8 rounded-full bg-slate-100 dark:bg-white/10 overflow-hidden" title="reply rate, relative to the best row">
                   <div className="h-full rounded-full bg-[#2a78d6] dark:bg-[#3987e5]" style={{ width: `${r.replyRate ? (r.replyRate / max) * 100 : 0}%` }} />
                 </div>
-                <span className={`tabular-nums w-11 text-right ${few(r) ? 'text-slate-400' : 'text-slate-700 dark:text-slate-200'}`} title={few(r) ? 'Fewer than 10 bids — not meaningful yet' : ''}>{pctText(r.replyRate)}</span>
+                <span className={`tabular-nums text-right ${few(r) ? 'text-slate-400' : 'text-slate-700 dark:text-slate-200'}`} title={few(r) ? 'Fewer than 10 bids — not meaningful yet' : 'replied ÷ sent'}>{pctText(r.replyRate)}</span>
               </div>
             </td>
-            <td className={`py-1.5 text-right tabular-nums ${few(r) ? 'text-slate-400' : 'text-emerald-700 dark:text-emerald-400'}`} title={few(r) ? 'Fewer than 10 bids — not meaningful yet' : 'won ÷ sent'}>{pctText(r.winRate)}</td>
+            <td className={`py-1.5 pl-1 text-right tabular-nums ${few(r) ? 'text-slate-400' : 'text-emerald-700 dark:text-emerald-400'}`} title={few(r) ? 'Fewer than 10 bids — not meaningful yet' : 'won ÷ sent'}>{pctText(r.winRate)}</td>
           </tr>
         ))}
       </tbody>
@@ -199,8 +208,11 @@ function AiReport({ report, createdAt, model, period }) {
     <div className="space-y-5">
       <div className="flex items-start gap-4">
         {score !== null && (
-          <div className="shrink-0 w-20 h-20 rounded-full border-4 flex items-center justify-center" style={{ borderColor: score >= 70 ? '#1baf7a' : score >= 40 ? '#eda100' : '#e34948' }} title="How well the account is set up to win work through BidPilot (0–100)">
-            <span className="text-2xl font-bold text-navy-950 dark:text-white">{score}</span>
+          <div className="shrink-0 flex flex-col items-center" title="The model's 0–100 rating of how well this account turns its full bid allowance into awarded projects: volume used, replies and awards so far, profile and verifications, pricing, proposal. Under 40 = bids are being lost to avoidable problems; 70+ = mostly fine-tuning.">
+            <div className="w-20 h-20 rounded-full border-4 flex items-center justify-center" style={{ borderColor: score >= 70 ? '#1baf7a' : score >= 40 ? '#eda100' : '#e34948' }}>
+              <span className="text-2xl font-bold text-navy-950 dark:text-white">{score}</span>
+            </div>
+            <span className="mt-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">readiness / 100</span>
           </div>
         )}
         <div>
@@ -351,7 +363,7 @@ export default function AnalyticsPage() {
 
       {/* AI review */}
       {(ai?.report || aiBusy || aiError) && (
-        <Card title="AI review" subtitle="Built from everything on this page plus your profiles, filters and settings. Each action names the setting to change.">
+        <Card title="AI review" subtitle="Built from everything on this page plus your profiles, filters and settings. The goal it optimises is projects won in total with the full bid allowance, not the win rate; each action names the setting to change.">
           {aiError && <p className="text-sm text-red-600 dark:text-red-400 mb-3">{aiError}</p>}
           {aiBusy && !ai?.report && <p className="text-sm text-slate-600 dark:text-slate-300">Reading your account and bid history and asking the model for a plan. This takes about half a minute.</p>}
           {ai?.report && <AiReport report={ai.report} createdAt={ai.createdAt} model={ai.model} period={ai.period} />}

@@ -56,7 +56,7 @@ export default function SettingsPage() {
   // Client-quality gate, follow-ups, automatic replies, monthly AI review
   const [minClientScore, setMinClientScore] = useState(user?.minClientScore ?? 35)
   const [maxProjectBids, setMaxProjectBids] = useState(user?.maxProjectBids ?? 40)
-  const [followUpEnabled, setFollowUpEnabled] = useState(user?.followUpEnabled || false)
+  const [followUpEnabled, setFollowUpEnabled] = useState(user?.followUpEnabled ?? true)
   const [followUpHours, setFollowUpHours] = useState(user?.followUpHours ?? 24)
   const [followUpMinScore, setFollowUpMinScore] = useState(user?.followUpMinScore ?? 85)
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(user?.autoReplyEnabled || false)

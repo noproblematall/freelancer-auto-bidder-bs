@@ -3,7 +3,7 @@ import api from './api'
 const LONG = { timeout: 180000 }
 
 // Winning bids on projects we bid on
-export async function getWinningBids(period = '90d') {
+export async function getWinningBids(period = '30d') {
   const { data } = await api.get('/insights/winning-bids', { params: { period } })
   return data
 }
@@ -15,13 +15,13 @@ export async function getWinningBidStudy() {
   const { data } = await api.get('/insights/winning-bids/study')
   return data
 }
-export async function runWinningBidStudy(period = '90d') {
+export async function runWinningBidStudy(period = '30d') {
   const { data } = await api.post('/insights/winning-bids/study', null, { params: { period }, ...LONG })
   return data
 }
 
 // Client explorer
-export async function getTopClients(period = '90d') {
+export async function getTopClients(period = '30d') {
   const { data } = await api.get('/insights/clients', { params: { period } })
   return data
 }

@@ -58,31 +58,52 @@ async function captureWinningBid(client, { project, myUid }) {
 }
 
 // Projects we bid on that were decided but whose winner is not stored yet.
-async function syncWinningBids(userId, { limit = 25 } = {}) {
+// Looks at the most recent RECENT_BIDS bids only and reads up to `limit`
+// winners per call (one Freelancer request each); the rest wait for the next
+// click or the 30-minute outcome check.
+const RECENT_BIDS = 500;
+async function syncWinningBids(userId, { limit = 50 } = {}) {
   const token = await prisma.freelancerToken.findUnique({ where: { userId } });
-  if (!token || isExpired(token.expiresAt)) return { checked: 0, captured: 0, error: 'Freelancer is not connected' };
+  if (!token || isExpired(token.expiresAt)) { const e = new Error('Freelancer is not connected. Connect it in Settings.'); e.status = 400; throw e; }
   const client = createFreelancerClient(decrypt(token.accessToken));
   const myUid = Number(token.freelancerUid) || null;
-  const bids = await prisma.bid.findMany({
-    where: { userId, awardStatus: { in: ['lost', 'awarded'] }, project: { winningBid: null } },
-    orderBy: { id: 'desc' }, take: limit,
-    include: { project: { select: { id: true, freelancerProjectId: true, bidCount: true } } },
+  // Decided bids among the most recent ones, then drop those whose winner is stored.
+  const recent = await prisma.bid.findMany({
+    where: { userId, awardStatus: { in: ['lost', 'awarded'] } },
+    orderBy: { id: 'desc' }, take: RECENT_BIDS,
+    select: { id: true, projectId: true, project: { select: { id: true, freelancerProjectId: true, bidCount: true } } },
   });
+  const projectIds = [...new Set(recent.map((b) => b.projectId))];
+  const stored = new Set((await prisma.winningBid.findMany({ where: { projectId: { in: projectIds } }, select: { projectId: true } })).map((w) => w.projectId));
+  const pending = [];
+  const seen = new Set();
+  for (const b of recent) {
+    if (stored.has(b.projectId) || seen.has(b.projectId)) continue;
+    seen.add(b.projectId);
+    pending.push(b);
+  }
+  const batch = pending.slice(0, limit);
   let captured = 0;
-  for (const b of bids) {
+  let noWinner = 0;
+  const errors = [];
+  for (const b of batch) {
     try {
-      if (await captureWinningBid(client, { project: b.project, myUid })) captured++;
+      if (await captureWinningBid(client, { project: b.project, myUid })) captured++; else noWinner++;
     } catch (err) {
-      logger.warn(`winningBids: project #${b.project.id} failed: HTTP ${err.response?.status ?? 'NETWORK'} ${err.message}`);
-      if (err.response?.status === 401 || err.response?.status === 403) break;
+      const status = err.response?.status;
+      const msg = `project #${b.project.freelancerProjectId}: HTTP ${status ?? 'NETWORK'} ${err.response?.data?.message || err.message}`;
+      logger.warn(`winningBids: ${msg}`);
+      errors.push(msg);
+      if (status === 401 || status === 403) break;
+      if (errors.length >= 5) break;
     }
   }
-  return { checked: bids.length, captured };
+  return { checked: batch.length, captured, noWinner, remaining: Math.max(0, pending.length - batch.length), errors };
 }
 
 // Rows for the Market page plus the headline numbers.
-async function winningBidRows(userId, period = '90d') {
-  const days = PERIOD_DAYS[period] === undefined ? 90 : PERIOD_DAYS[period];
+async function winningBidRows(userId, period = '30d') {
+  const days = PERIOD_DAYS[period] === undefined ? 30 : PERIOD_DAYS[period];
   const since = days ? new Date(Date.now() - days * 86400000) : null;
   const rows = await prisma.winningBid.findMany({
     where: { ...(since ? { fetchedAt: { gte: since } } : {}), project: { bids: { some: { userId } } } },
@@ -143,7 +164,7 @@ const STUDY_SCHEMA = `{
   "actions": [{ "priority": 1, "title": "...", "where": "BidPilot page/setting or Freelancer page", "change": "...", "why": "...", "expected": "..." }]
 }`;
 
-async function studyWinningBids(userId, period = '90d') {
+async function studyWinningBids(userId, period = '30d') {
   const { items, stats } = await winningBidRows(userId, period);
   const lost = items.filter((i) => !i.winner.isMine && i.our);
   if (lost.length < 3) { const e = new Error(`Only ${lost.length} lost project(s) with a stored winning bid. Click "Fetch winning bids" first, or wait for more awards; at least 3 are needed.`); e.status = 400; throw e; }
@@ -153,7 +174,7 @@ async function studyWinningBids(userId, period = '90d') {
     ours: { amount: i.our.amount, period: i.our.period, replied: i.our.replied, text: String(i.our.proposal || '').slice(0, 700) },
     winner: { amount: i.winner.amount, period: i.winner.period, country: i.winner.country, rating: i.winner.rating, reviews: i.winner.reviews, hourlyRate: i.winner.hourlyRate, sealed: i.winner.sealed, text: i.winner.description ? String(i.winner.description).slice(0, 700) : '(sealed / not visible)' },
   }));
-  const system = 'You are a Freelancer.com bidding coach. You compare the bids that WON projects with the bids this freelancer placed on the same projects and LOST. Find what the winners did differently (price position vs budget and vs the average bid, delivery period, how the text opens, specificity, questions, proof, length, profile strength, country, bid timing) and turn it into concrete changes to this freelancer\'s BidPilot settings and proposal prompt. Quote winners\' text only in short fragments. Be quantitative and specific; do not invent data. Respond with JSON only matching: ' + STUDY_SCHEMA;
+  const system = 'You are a Freelancer.com bidding coach. You compare the bids that WON projects with the bids this freelancer placed on the same projects and LOST. Find what the winners did differently (price position vs budget and vs the average bid, delivery period, how the text opens, specificity, questions, proof, length, profile strength, country, bid timing) and turn it into concrete changes to this freelancer\'s BidPilot settings and proposal prompt. The goal is MORE PROJECTS WON IN TOTAL, not a better win rate: never suggest bidding on fewer projects; suggest what makes each bid win more often at the same volume. Quote winners\' text only in short fragments. Be quantitative and specific; do not invent data. Respond with JSON only matching: ' + STUDY_SCHEMA;
   const userMsg = `Summary over ${lost.length} lost projects: ${JSON.stringify(stats)}\nOur settings: hourly rate ${user?.hourlyRate} USD, AI bid percentage ${user?.aiBidPercentage}%, custom proposal prompt: ${!!user?.proposalPrompt}. Our skills: ${String(user?.skillsSummary || '').slice(0, 300)}\n\nProject-by-project (ours vs winner):\n${JSON.stringify(sample)}`;
   const { report, model } = await askJson(userId, { system, user: userMsg, maxTokens: 3000 });
   return saveReport(userId, STUDY_ACTION, { report, model, message: `Winning-bid study (${period}, ${lost.length} lost projects): ${report.headline || ''}` });

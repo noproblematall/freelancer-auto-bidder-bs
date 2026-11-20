@@ -23,8 +23,8 @@ async function flClientFor(userId) {
 
 // Employers ranked from the projects table: quality (client score, hire
 // history, rating) first, then how much we have seen of them.
-async function topClients(userId, { period = '90d', limit = 40 } = {}) {
-  const days = { '30d': 30, '90d': 90, '180d': 180, all: null }[period] ?? 90;
+async function topClients(userId, { period = '30d', limit = 40 } = {}) {
+  const days = { '30d': 30, '90d': 90, '180d': 180, all: null }[period] ?? 30;
   const since = days ? new Date(Date.now() - days * 86400000) : null;
   const projects = await prisma.project.findMany({
     where: { ownerId: { not: null }, ...(since ? { discoveredAt: { gte: since } } : {}) },

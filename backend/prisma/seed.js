@@ -111,16 +111,18 @@ function defaultFreelancerProfile() {
   return { ...DEFAULT_FREELANCER_PROFILE };
 }
 
-// Bid profiles every new account starts with (bidding_profiles). All four run
+// Bid profiles every new account starts with (bidding_profiles). All five run
 // the same open search; the proposal prompt gives each its own bid style.
 // They start switched off, so nothing is bid until the owner turns one on.
-// Accounts that existed before this, and had no profile, get the same four
-// from the 20261109000000_default_bid_profiles migration.
+// Accounts that existed before this, and had no profile, got the first four
+// from the 20261109000000_default_bid_profiles migration; Outcome-first was
+// added to every account by 20261120150000_follow_up_on_outcome_profile.
 const DEFAULT_BID_PROFILES = Object.freeze([
   { name: 'Default', proposalPrompt: null },
   { name: 'Showcase', proposalPrompt: 'If my portfolio lists sites that clearly match this project (same platform, stack or kind of work), include up to three of them near the end, each on its own line with a few words on what it is. If none clearly match, include no links and do not mention my portfolio.' },
   { name: 'Questions', proposalPrompt: 'Before the closing line, ask two short questions about this brief that show I read it. Put each question on its own line.' },
   { name: 'Short', proposalPrompt: 'Keep the bid under 600 characters.' },
+  { name: 'Outcome-first', proposalPrompt: 'Structure the bid exactly like this and nothing else. Line 1: the direct outcome I will deliver for this job, specific to the brief (what the client will have when it is done). Line 2: one proof point from a similar project in my profile, in one sentence; never invent names, links or numbers. Then exactly three short plan lines, each on its own line starting with "- ", in the order I would do the work. Last line: exactly one clarifying question about the brief, on its own line. No greeting, no sign-off, no other text.' },
 ]);
 
 // Rows for a nested create. The app lists profiles newest first, so the

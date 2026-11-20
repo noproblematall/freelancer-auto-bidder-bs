@@ -82,8 +82,9 @@ model User {
 
   // Follow-up message to the client some hours after a bid with no reply
   // (services/bidding/followUp.js) and the AI reply to a client's first message
-  // (services/messaging/messagePoller.js). Both off by default.
-  followUpEnabled     Boolean @default(false) @map("follow_up_enabled")
+  // (services/messaging/messagePoller.js). Follow-up on by default (24 h);
+  // automatic replies off by default.
+  followUpEnabled     Boolean @default(true) @map("follow_up_enabled")
   followUpHours       Int     @default(24) @map("follow_up_hours")
   followUpMinScore    Int     @default(85) @map("follow_up_min_score")
   autoReplyEnabled    Boolean @default(false) @map("auto_reply_enabled")
