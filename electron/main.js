@@ -130,6 +130,8 @@ Object.assign(process.env, {
   ELECTRON_MODE: 'true',
   NODE_ENV: isDev ? 'development' : 'production',
   FRONTEND_DIST: frontendDist,
+  // Backend log file for diagnosis (see backend/src/utils/logger.js)
+  LOG_FILE: path.join(userDataPath, 'logs', 'backend.log'),
   // Echoed by /api/health so waitForBackend() knows the server answering on
   // the port is ours and not another program already listening there.
   GROWLANCE_INSTANCE_ID: crypto.randomUUID(),

@@ -365,7 +365,12 @@ export default function AnalyticsPage() {
       {(ai?.report || aiBusy || aiError) && (
         <Card title="AI review" subtitle="Built from everything on this page plus your profiles, filters and settings. The goal it optimises is projects won in total with the full bid allowance, not the win rate; each action names the setting to change.">
           {aiError && <p className="text-sm text-red-600 dark:text-red-400 mb-3">{aiError}</p>}
-          {aiBusy && !ai?.report && <p className="text-sm text-slate-600 dark:text-slate-300">Reading your account and bid history and asking the model for a plan. This takes about half a minute.</p>}
+          {aiBusy && (
+            <p className="inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 mb-3">
+              <svg className="w-4 h-4 animate-spin text-navy-700 dark:text-emerald-400" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z" /></svg>
+              Reading your account and bid history and asking the model for a plan. This takes about half a minute.
+            </p>
+          )}
           {ai?.report && <AiReport report={ai.report} createdAt={ai.createdAt} model={ai.model} period={ai.period} />}
         </Card>
       )}
