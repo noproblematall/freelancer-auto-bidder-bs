@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
+import { exportSettings, importSettings } from '../services/backup'
+import { useConfirm } from '../components/ConfirmDialog'
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 const DEFAULT_DAY = { enabled: true, start: '05:00', end: '21:00' }
@@ -34,6 +36,7 @@ const SECTIONS = [
   { key: 'schedule', label: 'Schedule' },
   { key: 'telegram', label: 'Telegram' },
   { key: 'webhook', label: 'Webhook' },
+  { key: 'backup', label: 'Backup & Restore' },
 ]
 
 export default function SettingsPage() {
@@ -65,6 +68,57 @@ export default function SettingsPage() {
   const [maxBidsPerHour, setMaxBidsPerHour] = useState(user?.maxBidsPerHour ?? 8)
   const [maxBidsPerDay, setMaxBidsPerDay] = useState(user?.maxBidsPerDay ?? 80)
   const [rateLimitMessage, setRateLimitMessage] = useState(null)
+  // Backup & Restore
+  const confirm = useConfirm()
+  const [backupSecrets, setBackupSecrets] = useState(true)
+  const [backupBusy, setBackupBusy] = useState(false)
+  const [backupMessage, setBackupMessage] = useState(null)
+  const [restoreMode, setRestoreMode] = useState('merge')
+  const [restoreBusy, setRestoreBusy] = useState(false)
+  const [restoreMessage, setRestoreMessage] = useState(null)
+  const restoreInputRef = useRef(null)
+
+  async function handleBackup() {
+    setBackupBusy(true); setBackupMessage(null)
+    try {
+      const data = await exportSettings({ secrets: backupSecrets })
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `bidpilot-settings-${new Date().toISOString().slice(0, 10)}.json`
+      document.body.appendChild(a); a.click(); a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 2000)
+      setBackupMessage({ type: 'success', text: `Backup saved: ${data.profiles?.length ?? 0} profiles, all settings${backupSecrets ? ', keys and the Freelancer connection' : ''}.` })
+    } catch (err) {
+      setBackupMessage({ type: 'error', text: err.response?.data?.error || err.message || 'Backup failed.' })
+    } finally { setBackupBusy(false) }
+  }
+
+  async function handleRestoreFile(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setRestoreMessage(null)
+    let backup
+    try { backup = JSON.parse(await file.text()) } catch { setRestoreMessage({ type: 'error', text: 'That file is not valid JSON.' }); return }
+    if (backup?.format !== 'bidpilot-settings') { setRestoreMessage({ type: 'error', text: 'That file is not a BidPilot settings backup.' }); return }
+    const hasSecrets = !!backup.secrets
+    const ok = await confirm({
+      title: 'Restore settings from this backup?',
+      message: `Made ${backup.exportedAt ? new Date(backup.exportedAt).toLocaleString() : 'at an unknown time'}${backup.appVersion ? ` with BidPilot ${backup.appVersion}` : ''}: ${backup.profiles?.length ?? 0} bid profiles and all account settings${hasSecrets ? ', including API keys and the Freelancer connection' : ''}. Current settings will be overwritten; profiles with the same name are updated${restoreMode === 'replace' ? ' and other profiles are deleted' : ', others are kept'}.`,
+      confirmText: 'Restore',
+    })
+    if (!ok) return
+    setRestoreBusy(true)
+    try {
+      const { summary } = await importSettings(backup, { profiles: restoreMode })
+      setRestoreMessage({ type: 'success', text: `Restored ${summary.settings} settings, ${summary.profiles.created} profiles created, ${summary.profiles.updated} updated${summary.profiles.removed ? `, ${summary.profiles.removed} removed` : ''}${summary.secrets ? `, ${summary.secrets} keys` : ''}${summary.freelancerRestored ? ', Freelancer connection' : ''}.` })
+      await fetchStatus()
+    } catch (err) {
+      setRestoreMessage({ type: 'error', text: err.response?.data?.error || err.message || 'Restore failed.' })
+    } finally { setRestoreBusy(false) }
+  }
   const [hourlyRate, setHourlyRate] = useState(user?.hourlyRate ?? '')
   const [hourlyRateMessage, setHourlyRateMessage] = useState(null)
   const [aiBidPercentage, setAiBidPercentage] = useState(user?.aiBidPercentage ?? 100)
@@ -1407,6 +1461,61 @@ export default function SettingsPage() {
                   {webhookTestMessage.text}
                 </p>
               )}
+            </div>
+          </div>
+          )}
+
+          {/* Backup & Restore */}
+          {activeSection === 'backup' && (
+          <div className="bg-white dark:bg-navy-800/90 rounded-xl border border-slate-200 dark:border-white/6 shadow-lg dark:shadow-2xl dark:shadow-black/50 overflow-hidden">
+            <div className="px-6 py-5 border-b border-slate-100 dark:border-white/8">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center shadow-sm">
+                  <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold text-navy-950 dark:text-white">Backup &amp; Restore</h2>
+                  <p className="text-sm text-slate-700 dark:text-slate-400">Save every setting to one file and bring it back on a fresh install or another computer.</p>
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-5 space-y-5">
+              <div className="p-4 rounded-lg bg-slate-50 dark:bg-navy-900/50 border border-slate-200 dark:border-white/8">
+                <p className="text-sm font-medium text-navy-950 dark:text-white">Back up</p>
+                <p className="text-xs text-slate-700 dark:text-slate-200 mt-1">
+                  One JSON file with all account settings (auto-bidding, schedule, Freelancer profile text, proposal prompt, job filters, Telegram and webhook), every bid profile, and your Freelancer app ID. Bids, projects and clients are not included.
+                </p>
+                <label className="mt-3 flex items-start gap-2 text-xs text-slate-700 dark:text-slate-200">
+                  <input type="checkbox" checked={backupSecrets} onChange={(e) => setBackupSecrets(e.target.checked)} className="mt-0.5" />
+                  <span>Include the OpenAI key, Telegram bot token, Freelancer app secret and the Freelancer sign-in, <b>in plain text</b>. Needed for a complete restore on another computer; keep the file private.</span>
+                </label>
+                <div className="mt-3 flex items-center gap-3">
+                  <button type="button" onClick={handleBackup} disabled={backupBusy} className="px-4 py-2 text-sm font-medium rounded-lg bg-navy-900 dark:bg-emerald-400 text-white dark:text-navy-950 hover:bg-navy-800 dark:hover:bg-emerald-500 transition-colors disabled:opacity-50">
+                    {backupBusy ? 'Preparing…' : 'Download backup'}
+                  </button>
+                  {backupMessage && <span className={`text-xs font-medium ${backupMessage.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>{backupMessage.text}</span>}
+                </div>
+              </div>
+
+              <div className="p-4 rounded-lg bg-slate-50 dark:bg-navy-900/50 border border-slate-200 dark:border-white/8">
+                <p className="text-sm font-medium text-navy-950 dark:text-white">Restore</p>
+                <p className="text-xs text-slate-700 dark:text-slate-200 mt-1">
+                  Pick a backup file. Account settings are overwritten; bid profiles are matched by name. You are asked to confirm before anything changes.
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-slate-700 dark:text-slate-200">
+                  <label className="flex items-center gap-1.5"><input type="radio" name="restore-mode" checked={restoreMode === 'merge'} onChange={() => setRestoreMode('merge')} /> Keep profiles not in the file</label>
+                  <label className="flex items-center gap-1.5"><input type="radio" name="restore-mode" checked={restoreMode === 'replace'} onChange={() => setRestoreMode('replace')} /> Delete profiles not in the file</label>
+                </div>
+                <input ref={restoreInputRef} type="file" accept="application/json,.json" className="hidden" onChange={handleRestoreFile} />
+                <div className="mt-3 flex items-center gap-3">
+                  <button type="button" onClick={() => restoreInputRef.current?.click()} disabled={restoreBusy} className="px-4 py-2 text-sm font-medium rounded-lg bg-white dark:bg-navy-800 border border-slate-300 dark:border-white/10 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-navy-700 transition-colors disabled:opacity-50">
+                    {restoreBusy ? 'Restoring…' : 'Restore from file…'}
+                  </button>
+                  {restoreMessage && <span className={`text-xs font-medium ${restoreMessage.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>{restoreMessage.text}</span>}
+                </div>
+              </div>
             </div>
           </div>
           )}

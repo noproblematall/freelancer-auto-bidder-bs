@@ -22,6 +22,7 @@ const clientRoutes = require('./routes/clients.routes');
 const jobFilterRoutes = require('./routes/jobFilters.routes');
 const analyticsRoutes = require('./routes/analytics.routes');
 const insightsRoutes = require('./routes/insights.routes');
+const backupRoutes = require('./routes/backup.routes');
 
 const app = express();
 
@@ -53,6 +54,7 @@ app.use('/api/clients', clientRoutes);
 app.use('/api/job-filters', jobFilterRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/insights', insightsRoutes);
+app.use('/api/backup', backupRoutes);
 
 // Health check
 // `instance` lets the Electron shell confirm the server on its port is the

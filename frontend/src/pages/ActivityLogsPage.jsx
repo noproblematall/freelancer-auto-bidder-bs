@@ -72,6 +72,7 @@ const ACTION_LABELS = {
   bid_quota_retry: 'Bid Allowance Re-checked by Hand',
   bid_quota_fields: 'Freelancer Bid Count Not Reported (fields seen)',
   ai_analytics_report: 'AI Analytics Review',
+  settings_imported: 'Settings Restored from Backup',
   ai_winning_bids_study: 'AI Winning-Bid Study',
   ai_client_study: 'AI Client Study',
   bid_cap_reached: 'Bid Limit Reached',
@@ -185,7 +186,7 @@ export default function ActivityLogsPage() {
     }
 
     // Operational problems: render the human message, never a JSON blob
-    if (['scheduler_auto_paused', 'openai_stall_detected', 'openai_not_configured', 'token_refresh_failed', 'freelancer_not_connected', 'project_search_failed', 'bid_cap_reached', 'freelancer_bids_exhausted', 'bid_quota_retry', 'bid_quota_fields', 'ai_analytics_report', 'ai_winning_bids_study', 'ai_client_study'].includes(log.action)) {
+    if (['scheduler_auto_paused', 'openai_stall_detected', 'openai_not_configured', 'token_refresh_failed', 'freelancer_not_connected', 'project_search_failed', 'bid_cap_reached', 'freelancer_bids_exhausted', 'bid_quota_retry', 'bid_quota_fields', 'ai_analytics_report', 'ai_winning_bids_study', 'ai_client_study', 'settings_imported'].includes(log.action)) {
       return (
         <div className="text-xs text-amber-700 dark:text-amber-400 space-y-0.5">
           {(details.message || details.reason) && <div>{details.message || details.reason}</div>}
