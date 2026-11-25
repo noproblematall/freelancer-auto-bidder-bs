@@ -5,6 +5,17 @@ import { useConfirm } from '../components/ConfirmDialog'
 import ProjectDetailModal from '../components/Projects/ProjectDetailModal'
 import { timeAgo, formatAmount, formatBudget } from '../utils/formatters'
 
+// Time from the project being posted to the bid being placed: "50s",
+// "1m 20s", "2h 5m", "3d 4h". Null when the times are missing or out of order.
+function bidDelay(postedAt, placedAt) {
+  const s = Math.round((new Date(placedAt) - new Date(postedAt)) / 1000)
+  if (!Number.isFinite(s) || s < 0) return null
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
+  return `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h`
+}
+
 // The project row as the Projects page's detail modal expects it (jobNames parsed).
 function projectForModal(project) {
   if (!project) return null
@@ -673,7 +684,13 @@ export default function BidsPage() {
                         ) : null
                       })()}
                       <span>{bid.periodDays} days</span>
-                      {bid.placedAt && <span title={`Bid placed ${new Date(bid.placedAt).toLocaleString()}`}>bid {timeAgo(bid.placedAt)}</span>}
+                      {bid.placedAt && (() => {
+                        // How long after the project was posted the bid went in; the plain "bid … ago" only when the posting time is unknown
+                        const delay = bid.project?.timeSubmitted ? bidDelay(bid.project.timeSubmitted, bid.placedAt) : null
+                        return delay
+                          ? <span className="font-medium text-slate-600 dark:text-slate-300" title={`Bid placed ${new Date(bid.placedAt).toLocaleString()}, ${delay} after the project was posted`}>bid after {delay}</span>
+                          : <span title={`Bid placed ${new Date(bid.placedAt).toLocaleString()}`}>bid {timeAgo(bid.placedAt)}</span>
+                      })()}
                       {!bid.placedAt && bid.createdAt && <span>{timeAgo(bid.createdAt)}</span>}
                     </div>
                     {bid.project && (
