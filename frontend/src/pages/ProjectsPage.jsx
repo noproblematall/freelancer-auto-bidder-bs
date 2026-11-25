@@ -365,109 +365,116 @@ export default function ProjectsPage() {
                 onClick={() => setSelectedProject(project)}
                 className="w-full text-left bg-white dark:bg-navy-800/90 rounded-xl border border-slate-200 dark:border-white/6 shadow-lg dark:shadow-2xl dark:shadow-black/50 hover:shadow-xl dark:hover:shadow-2xl dark:hover:shadow-black/60 hover:border-slate-300 dark:hover:border-navy-500 transition-all p-5"
               >
+                {/* Line 1: title, type and bid state on the left; budget on the right */}
                 <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <h3 className="text-sm font-semibold text-navy-950 dark:text-white truncate">{project.title}</h3>
-                      {project.projectType && (
-                        <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
-                          project.projectType === 'fixed'
-                            ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
-                            : 'bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400'
-                        }`}>
-                          {project.projectType === 'fixed' ? 'Fixed' : 'Hourly'}
-                        </span>
-                      )}
-                      {(() => {
-                        const b = bidBadge(project.bid)
-                        return b ? (
-                          <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${b.className}`} title={b.title}>
-                            {b.text}
-                          </span>
-                        ) : null
-                      })()}
-                      {project.winningBid && !project.winningBid.isMine && (
-                        <span className="shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300" title={`Awarded to ${project.winningBid.bidderName || project.winningBid.bidderUsername || 'another freelancer'}${project.winningBid.bidderCountry ? ` (${project.winningBid.bidderCountry})` : ''}${project.winningBid.amount ? ` for ${project.winningBid.amount} ${project.currency}` : ''}${project.winningBid.period ? `, ${project.winningBid.period} days` : ''}. See Market → Winning bids.`}>
-                          awarded → {project.winningBid.bidderName || project.winningBid.bidderUsername || 'someone else'}{project.winningBid.amount ? ` · ${formatAmount(project.winningBid.amount, project.currency)}` : ''}
-                        </span>
-                      )}
-                    </div>
-                    {project.description && (
-                      <p className="text-sm text-slate-700 dark:text-slate-200 line-clamp-2 mb-3">{project.description.replace(/\s+/g, ' ').trim()}</p>
+                  <div className="flex items-center gap-2 flex-wrap min-w-0">
+                    <h3 className="text-base font-semibold leading-snug text-navy-950 dark:text-white">{project.title}</h3>
+                    {project.projectType && (
+                      <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
+                        project.projectType === 'fixed'
+                          ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+                          : 'bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400'
+                      }`}>
+                        {project.projectType === 'fixed' ? 'Fixed' : 'Hourly'}
+                      </span>
                     )}
-                    <div className="flex items-center gap-3 flex-wrap">
-                      {project.jobNames?.length > 0
-                        ? project.jobNames.map((job) => (
-                            <span key={job.id} className="text-xs font-medium bg-navy-50 dark:bg-navy-700/50 text-navy-700 dark:text-navy-300 px-2 py-0.5 rounded-full">
-                              {job.name}
-                            </span>
-                          ))
-                        : null
-                      }
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-sm font-medium text-emerald-500">
-                      {formatBudget(project.budgetMin, project.budgetMax, project.currency)}
-                    </p>
-                    <div className="flex items-center gap-3 mt-1.5 text-xs text-slate-500 dark:text-slate-400 justify-end flex-wrap">
-                      {project.relevanceScore != null && (
-                        <span className={`font-medium px-1.5 py-0.5 rounded ${
-                          project.relevanceScore >= 70
-                            ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
-                            : project.relevanceScore >= 40
-                              ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-                              : 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400'
-                        }`} title="AI relevance score">
-                          {project.relevanceScore}%
+                    {(() => {
+                      const b = bidBadge(project.bid)
+                      return b ? (
+                        <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${b.className}`} title={b.title}>
+                          {b.text}
                         </span>
-                      )}
-                      {project.clientScore != null && (
-                        <span className={`font-medium px-1.5 py-0.5 rounded ${
-                          project.clientScore >= 65
-                            ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
-                            : project.clientScore >= 35
-                              ? 'bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300'
-                              : 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-                        }`} title={`Client score ${project.clientScore}/100${project.clientScoreReasons ? `\n${project.clientScoreReasons}` : ''}`}>
-                          client {project.clientScore}
-                        </span>
-                      )}
-                      {(() => {
-                        // The engine's own decision wins; the heuristic covers rows from before decisions were recorded
-                        const label = decisionLabel(project)
-                        if (label) {
-                          return (
-                            <span className={`font-medium px-1.5 py-0.5 rounded ${decisionTone(project)}`} title={decisionDetail(project)}>
-                              {label}
-                            </span>
-                          )
-                        }
-                        if (project.relevanceScore != null || project.bid) return null
-                        const skipReason = getDetailedSkipReason(project, activeProfiles, userBids)
-                        return (
-                          <span
-                            className="font-medium px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400"
-                            title={skipReason?.tooltip}
-                          >
-                            {skipReason?.text}
-                          </span>
-                        )
-                      })()}
-                      {(() => {
-                        const ci = getCountryInfo(project.ownerCountry)
-                        return ci ? (
-                          <span className="flex items-center gap-1">
-                            <span className="text-base leading-none">{ci.flag}</span>
-                            <span>{ci.name} ({project.ownerCountry})</span>
-                          </span>
-                        ) : null
-                      })()}
-                      <span>{project.bidCount} bids</span>
-                      <span>{timeAgo(project.timeSubmitted || project.discoveredAt)}</span>
-                    </div>
+                      ) : null
+                    })()}
+                    {project.winningBid && !project.winningBid.isMine && (
+                      <span className="shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300" title={`Awarded to ${project.winningBid.bidderName || project.winningBid.bidderUsername || 'another freelancer'}${project.winningBid.bidderCountry ? ` (${project.winningBid.bidderCountry})` : ''}${project.winningBid.amount ? ` for ${project.winningBid.amount} ${project.currency}` : ''}${project.winningBid.period ? `, ${project.winningBid.period} days` : ''}. See Market → Winning bids.`}>
+                        awarded → {project.winningBid.bidderName || project.winningBid.bidderUsername || 'someone else'}{project.winningBid.amount ? ` · ${formatAmount(project.winningBid.amount, project.currency)}` : ''}
+                      </span>
+                    )}
                   </div>
+                  <p className="shrink-0 text-base font-semibold text-emerald-500 whitespace-nowrap">
+                    {formatBudget(project.budgetMin, project.budgetMax, project.currency)}
+                  </p>
                 </div>
+
+                {/* Line 2: scores, decision and client facts in one row */}
+                <div className="flex items-center gap-x-3 gap-y-1.5 flex-wrap mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  {project.relevanceScore != null && (
+                    <span className={`font-semibold px-2 py-0.5 rounded ${
+                      project.relevanceScore >= 70
+                        ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                        : project.relevanceScore >= 40
+                          ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                          : 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                    }`} title="AI relevance score">
+                      match {project.relevanceScore}%
+                    </span>
+                  )}
+                  {project.clientScore != null && (
+                    <span className={`font-medium px-2 py-0.5 rounded ${
+                      project.clientScore >= 65
+                        ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                        : project.clientScore >= 35
+                          ? 'bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300'
+                          : 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                    }`} title={`Client score ${project.clientScore}/100${project.clientScoreReasons ? `\n${project.clientScoreReasons}` : ''}`}>
+                      client {project.clientScore}
+                    </span>
+                  )}
+                  {(() => {
+                    // The engine's own decision wins; the heuristic covers rows from before decisions were recorded
+                    const label = decisionLabel(project)
+                    if (label) {
+                      return (
+                        <span className={`font-medium px-2 py-0.5 rounded ${decisionTone(project)}`} title={decisionDetail(project)}>
+                          {label}
+                        </span>
+                      )
+                    }
+                    if (project.relevanceScore != null || project.bid) return null
+                    const skipReason = getDetailedSkipReason(project, activeProfiles, userBids)
+                    return (
+                      <span
+                        className="font-medium px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400"
+                        title={skipReason?.tooltip}
+                      >
+                        {skipReason?.text}
+                      </span>
+                    )
+                  })()}
+                  {(() => {
+                    const ci = getCountryInfo(project.ownerCountry)
+                    return ci ? (
+                      <span className="flex items-center gap-1">
+                        <span className="text-base leading-none">{ci.flag}</span>
+                        <span>{ci.name}</span>
+                      </span>
+                    ) : null
+                  })()}
+                  <span>{project.bidCount} bids</span>
+                  <span>posted {timeAgo(project.timeSubmitted || project.discoveredAt)}</span>
+                </div>
+
+                {/* Description across the full card width */}
+                {project.description && (
+                  <p className="mt-3 text-sm leading-relaxed text-slate-600 dark:text-slate-300 line-clamp-2">{project.description.replace(/\s+/g, ' ').trim()}</p>
+                )}
+
+                {/* Skills: small quiet chips, the first eight */}
+                {project.jobNames?.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap mt-3">
+                    {project.jobNames.slice(0, 8).map((job) => (
+                      <span key={job.id} className="text-[11px] font-medium border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-md">
+                        {job.name}
+                      </span>
+                    ))}
+                    {project.jobNames.length > 8 && (
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400" title={project.jobNames.slice(8).map((j) => j.name).join(', ')}>
+                        +{project.jobNames.length - 8} more
+                      </span>
+                    )}
+                  </div>
+                )}
               </button>
             ))}
           </div>
