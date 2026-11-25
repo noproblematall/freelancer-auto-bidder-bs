@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart } from 'recharts'
 import { format, parseISO } from 'date-fns'
-import { getAnalyticsOverview, getAiAnalytics, runAiAnalytics } from '../services/analytics'
+import { getAnalyticsOverview, runAiAnalytics } from '../services/analytics'
 import { timeAgo } from '../utils/formatters'
 
 // Chart colours: validated categorical slots (blue = sent, aqua = won, red = errors),
@@ -316,7 +316,6 @@ export default function AnalyticsPage() {
   }, [])
 
   useEffect(() => { load(period) }, [period, load])
-  useEffect(() => { getAiAnalytics().then(setAi).catch(() => {}) }, [])
 
   async function handleAi() {
     setAiBusy(true); setAiError(null)
@@ -376,7 +375,7 @@ export default function AnalyticsPage() {
       )}
       {!ai?.report && !aiBusy && !aiError && (
         <div className="p-4 rounded-xl border border-dashed border-slate-300 dark:border-white/15 text-sm text-slate-600 dark:text-slate-300">
-          Click <span className="font-semibold text-navy-950 dark:text-white">AI analytics</span> to get a ranked list of changes to make in BidPilot and on Freelancer.com, based on the numbers below. The result is kept here until you run it again.
+          Click <span className="font-semibold text-navy-950 dark:text-white">AI analytics</span> to get a ranked list of changes to make in BidPilot and on Freelancer.com, based on the numbers below. The result shows here after you click.
         </div>
       )}
 
