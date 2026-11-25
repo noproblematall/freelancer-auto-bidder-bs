@@ -295,7 +295,34 @@ async function runAllActiveProfiles() {
   } finally {
     isRunning = false;
     currentRunStartedAt = null;
+    lastRunEndedAt = Date.now();
+    // A project was announced while this run was busy: go again for it.
+    if (pendingRerun) { pendingRerun = false; requestRun('announced during the previous run'); }
   }
+}
+
+// A run asked for outside the cron tick: the live project feed
+// (services/freelancer/projectSocket.js) calls this the moment Freelancer
+// announces a new project. Requests during a run are folded into one follow-up
+// run, and runs are kept REQUESTED_RUN_GAP_MS apart so a busy minute on
+// Freelancer does not turn into a search per project.
+const REQUESTED_RUN_GAP_MS = 10 * 1000;
+const REQUESTED_RUN_SETTLE_MS = 1500; // lets the project reach Freelancer's search
+let pendingRerun = false;
+let requestTimer = null;
+let lastRunEndedAt = 0;
+
+function requestRun(reason = '') {
+  if (!cronJob) return; // the engine is stopped
+  if (isRunning) { pendingRerun = true; return; }
+  if (requestTimer) return;
+  const wait = Math.max(REQUESTED_RUN_SETTLE_MS, REQUESTED_RUN_GAP_MS - (Date.now() - lastRunEndedAt));
+  requestTimer = setTimeout(() => {
+    requestTimer = null;
+    if (!cronJob) return;
+    logger.info(`Scheduler: run requested${reason ? ` (${reason})` : ''}`);
+    runAllActiveProfiles();
+  }, wait);
 }
 
 /**
@@ -404,4 +431,4 @@ function getStatus() {
   };
 }
 
-module.exports = { start, stop, getStatus, runAllActiveProfiles, pruneActivityLogs, MAX_ACTIVITY_LOGS };
+module.exports = { start, stop, getStatus, runAllActiveProfiles, requestRun, pruneActivityLogs, MAX_ACTIVITY_LOGS };

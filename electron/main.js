@@ -408,6 +408,7 @@ app.on('before-quit', () => {
   // Remove the tray icon now; otherwise Windows keeps a dead icon until the mouse passes over it.
   destroyTray()
   try { require('../backend/src/services/bidding/scheduler').stop() } catch (_) {}
+  try { require('../backend/src/services/freelancer/projectSocket').stopProjectSocket() } catch (_) {}
   try { require('../backend/src/services/messaging/messagePoller').stopPoller() } catch (_) {}
   try { require('../backend/src/services/messaging/telegramCommandPoller').stopCommandPoller() } catch (_) {}
   try { require('../backend/src/services/meetings/meetingReminder').stopMeetingReminder() } catch (_) {}

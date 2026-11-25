@@ -139,6 +139,12 @@ const server = app.listen(env.port, '127.0.0.1', () => {
   const scheduler = require('./services/bidding/scheduler');
   scheduler.start();
 
+  // Live feed of new projects over Freelancer's notification socket: asks the
+  // scheduler for a run the moment a project is posted (needs the website
+  // sign-in; without it the once-a-minute search above carries on alone)
+  const { startProjectSocket } = require('./services/freelancer/projectSocket');
+  startProjectSocket();
+
   // Start the Freelancer message poller (checks every 2 minutes)
   const { startPoller } = require('./services/messaging/messagePoller');
   startPoller();
