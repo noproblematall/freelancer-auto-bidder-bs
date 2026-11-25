@@ -12,6 +12,6 @@ export async function getAiAnalytics() {
 
 // The review calls OpenAI with the whole analytics picture; allow it time.
 export async function runAiAnalytics(period = '30d') {
-  const { data } = await api.post('/analytics/ai', null, { params: { period }, timeout: 180000 })
+  const { data } = await api.post('/analytics/ai', {}, { params: { period }, timeout: 180000 })
   return data
 }

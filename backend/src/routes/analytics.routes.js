@@ -60,7 +60,9 @@ function buildChecklist(profile, reputation) {
   add('profileComplete', v.profileComplete, 'Profile marked complete', 'Freelancer ranks complete profiles higher in bid lists.', 'https://www.freelancer.com/me');
   add('portfolio', profile.portfolioCount == null ? null : profile.portfolioCount >= 5, profile.portfolioCount == null ? 'Portfolio has 5+ items' : `Portfolio has 5+ items (${profile.portfolioCount} now)`, 'Clients open the portfolio before they reply; five strong, relevant items beat twenty weak ones.', 'https://www.freelancer.com/me');
   add('exams', profile.qualifications == null ? null : profile.qualifications >= 3, profile.qualifications == null ? 'Passed 3+ skill exams' : `Passed 3+ skill exams (${profile.qualifications} now)`, 'Exam badges appear on bids for the matching skills and lift ranking.', 'https://www.freelancer.com/exam/');
-  add('skills', profile.skills.length > 0 && profile.skills.length <= 40, `Skills list focused (${profile.skills.length} now)`, 'Seventy skills reads as "does anything"; keep the ones you want to be hired for so the search ranks you for them.', 'https://www.freelancer.com/me');
+  // A long skills list is fine: Freelancer only lets you bid on projects whose
+  // skills are on your account, and the bid profiles keep each bid focused.
+  add('skills', profile.skills.length > 0, `Skills listed (${profile.skills.length} now)`, 'Freelancer only shows you projects for skills on your account, so list every area you bid in; your bid profiles keep each bid focused on its own area.', 'https://www.freelancer.com/me');
   const tagline = String(profile.tagline || '').trim();
   const genericTagline = /^[\w .+#/&-]{0,40}$/.test(tagline) && /\|/.test(tagline) || tagline.length < 25;
   add('tagline', tagline ? !genericTagline : false, 'Specific tagline', 'The tagline is the one line clients see under your name in the bid list; name the outcome you deliver ("Shopify stores that convert"), not a list of words.', 'https://www.freelancer.com/me');

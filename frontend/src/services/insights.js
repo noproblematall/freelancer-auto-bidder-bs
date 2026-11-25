@@ -8,7 +8,7 @@ export async function getWinningBids(period = '30d') {
   return data
 }
 export async function syncWinningBids() {
-  const { data } = await api.post('/insights/winning-bids/sync', null, { timeout: 120000 })
+  const { data } = await api.post('/insights/winning-bids/sync', {}, { timeout: 120000 })
   return data
 }
 export async function getWinningBidStudy() {
@@ -16,7 +16,7 @@ export async function getWinningBidStudy() {
   return data
 }
 export async function runWinningBidStudy(period = '30d') {
-  const { data } = await api.post('/insights/winning-bids/study', null, { params: { period }, ...LONG })
+  const { data } = await api.post('/insights/winning-bids/study', {}, { params: { period }, ...LONG })
   return data
 }
 
@@ -38,6 +38,6 @@ export async function getClientStudy(ownerId) {
   return data
 }
 export async function runClientStudy(ownerId) {
-  const { data } = await api.post(`/insights/clients/${ownerId}/study`, null, LONG)
+  const { data } = await api.post(`/insights/clients/${ownerId}/study`, {}, LONG)
   return data
 }
