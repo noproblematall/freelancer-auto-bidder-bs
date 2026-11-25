@@ -48,9 +48,41 @@ router.get('/quota/probe', async (req, res, next) => {
   }
 });
 
+// POST /api/bids/quota/web-session — store the Freelancer website session by
+// hand. The desktop app captures these two cookie values in its own sign-in
+// window; in a browser there is no such window, so the user copies them from
+// their freelancer.com cookies (Settings → Freelancer).
+router.post('/quota/web-session', async (req, res, next) => {
+  try {
+    const userId = String(req.body?.userId ?? '').trim();
+    const hash = String(req.body?.hash ?? '').trim();
+    if (!/^\d{1,20}$/.test(userId)) return res.status(400).json({ error: 'GETAFREE_USER_ID must be a number.' });
+    if (!hash || hash.length > 1000 || /[\s;,]/.test(hash)) return res.status(400).json({ error: 'GETAFREE_AUTH_HASH_V2 is missing or not a single cookie value.' });
+    require('../services/freelancer/webSession').save({ userId, hash });
+    require('../services/freelancer/bidQuota').clearAllBidQuota();
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/bids/quota/web-login — open a "Sign in to Freelancer.com" browser
+// window on this machine and wait for the sign-in (services/freelancer/
+// webLogin.js). The browser counterpart of the desktop app's sign-in window;
+// answers once the user has signed in or closed the window.
+router.post('/quota/web-login', async (req, res, next) => {
+  try {
+    req.setTimeout(0);
+    res.json(await require('../services/freelancer/webLogin').login());
+  } catch (err) {
+    next(err);
+  }
+});
+
 // DELETE /api/bids/quota/web-session — forget the Freelancer website session.
 router.delete('/quota/web-session', async (req, res, next) => {
   try {
+    require('../services/freelancer/webLogin').clearProfile();
     require('../services/freelancer/webSession').clear();
     require('../services/freelancer/bidQuota').clearAllBidQuota();
     res.json({ ok: true });

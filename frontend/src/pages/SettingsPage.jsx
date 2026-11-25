@@ -160,8 +160,39 @@ export default function SettingsPage() {
   async function handleWebLogin() {
     setWebLoginBusy(true)
     try {
-      const r = await window.electron.freelancer.webLogin()
+      // Desktop: the app's own sign-in window. Browser: the backend opens one.
+      const r = canWebLogin
+        ? await window.electron.freelancer.webLogin()
+        : (await api.post('/bids/quota/web-login')).data
+      if (r && !r.ok && r.error) setWebCookieError(r.error)
       if (r?.ok) await api.get('/bids/quota', { params: { refresh: 1 } }).then((res) => setBidQuota(res.data)).catch(() => {})
+    } finally {
+      setWebLoginBusy(false)
+    }
+  }
+
+  // In a browser there is no in-app sign-in window, so the two Freelancer.com
+  // cookie values are pasted by hand instead.
+  const [webCookieUserId, setWebCookieUserId] = useState('')
+  const [webCookieHash, setWebCookieHash] = useState('')
+  const [webCookieError, setWebCookieError] = useState('')
+
+  async function handleWebCookieSave(e) {
+    e.preventDefault()
+    setWebCookieError('')
+    setWebLoginBusy(true)
+    try {
+      await api.post('/bids/quota/web-session', { userId: webCookieUserId.trim(), hash: webCookieHash.trim() })
+      const { data } = await api.get('/bids/quota', { params: { refresh: 1 } })
+      setBidQuota(data)
+      if (data.remaining == null && !data.unlimited) {
+        setWebCookieError('Saved, but Freelancer did not accept these values. Check that both were copied in full while signed in to freelancer.com.')
+      } else {
+        setWebCookieUserId('')
+        setWebCookieHash('')
+      }
+    } catch (err) {
+      setWebCookieError(err.response?.data?.error || err.message)
     } finally {
       setWebLoginBusy(false)
     }
@@ -170,7 +201,7 @@ export default function SettingsPage() {
   async function handleWebLogout() {
     setWebLoginBusy(true)
     try {
-      await window.electron.freelancer.webLogout()
+      if (canWebLogin) await window.electron.freelancer.webLogout()
       await api.delete('/bids/quota/web-session').catch(() => {})
       await loadBidQuota()
     } finally {
@@ -977,7 +1008,7 @@ export default function SettingsPage() {
                                     : 'Freelancer reports this number only to its website, not through the API. Sign in to Freelancer.com once, inside BidPilot, and the count is read the way your dashboard shows it.'}
                         </p>
                       </div>
-                      {canWebLogin && (
+                      {(
                         bidQuota?.webSession?.present && !bidQuota?.webSession?.invalid ? (
                           <button type="button" onClick={handleWebLogout} disabled={webLoginBusy} className="shrink-0 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-navy-700 rounded-lg hover:bg-slate-200 dark:hover:bg-navy-600 transition-colors disabled:opacity-50">
                             {webLoginBusy ? '…' : 'Sign out of Freelancer.com'}
@@ -989,6 +1020,37 @@ export default function SettingsPage() {
                         )
                       )}
                     </div>
+                    {!canWebLogin && webCookieError && <p className="mt-2 text-xs text-red-600 dark:text-red-400">{webCookieError}</p>}
+                    {!canWebLogin && bidQuota && (!bidQuota.webSession?.present || bidQuota.webSession?.invalid) && (
+                      <details className="mt-3">
+                      <summary className="text-xs text-slate-500 dark:text-slate-400 cursor-pointer">If the sign-in window does not work, paste the sign-in cookies by hand</summary>
+                      <form onSubmit={handleWebCookieSave} className="mt-2 space-y-2">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Open freelancer.com while signed in, press F12, go to Application → Cookies → https://www.freelancer.com, and copy the values of <span className="font-mono">GETAFREE_USER_ID</span> and <span className="font-mono">GETAFREE_AUTH_HASH_V2</span>. They are stored encrypted and used only to read the bid count.
+                        </p>
+                        <input
+                          type="text"
+                          value={webCookieUserId}
+                          onChange={(e) => setWebCookieUserId(e.target.value)}
+                          placeholder="GETAFREE_USER_ID"
+                          required
+                          className="w-full px-3 py-2 text-xs font-mono bg-white dark:bg-navy-800 text-navy-950 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400/30"
+                        />
+                        <input
+                          type="password"
+                          value={webCookieHash}
+                          onChange={(e) => setWebCookieHash(e.target.value)}
+                          placeholder="GETAFREE_AUTH_HASH_V2"
+                          required
+                          autoComplete="off"
+                          className="w-full px-3 py-2 text-xs font-mono bg-white dark:bg-navy-800 text-navy-950 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400/30"
+                        />
+                        <button type="submit" disabled={webLoginBusy} className="px-3 py-1.5 text-xs font-medium text-navy-950 bg-emerald-400 rounded-lg hover:bg-emerald-500 transition-colors shadow-sm disabled:opacity-50">
+                          {webLoginBusy ? 'Checking…' : 'Save and read bid count'}
+                        </button>
+                      </form>
+                      </details>
+                    )}
                   </div>
 
                   {/* Bid allowance diagnostics: what each source answers, raw, for when the header shows "Bids left: ?" */}

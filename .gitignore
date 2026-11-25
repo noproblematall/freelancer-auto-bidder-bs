@@ -7,6 +7,9 @@ backend/prisma/dev.db
 backend/prisma/dev.db-journal
 backend/prisma/dev.db-shm
 backend/prisma/dev.db-wal
+# Freelancer.com website sign-in (login cookies) — never commit
+backend/prisma/freelancer-web-profile/
+backend/prisma/freelancer-web-session.json
 backend/userData.db
 backend/userData.db-journal
 backend/userData.db-shm

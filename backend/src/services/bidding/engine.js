@@ -33,6 +33,12 @@ const FATAL_ERROR_PATTERNS = [
   'account is suspended',
 ];
 
+// Score-only pass (end of runProfilePipeline): how many skipped projects get a
+// relevance score per run, how many at once, and how far back to backfill.
+const SCORE_ONLY_MAX_PER_RUN = 25;
+const SCORE_ONLY_CONCURRENCY = 5;
+const SCORE_ONLY_BACKFILL_MS = 7 * 24 * 60 * 60 * 1000;
+
 class FatalBidError extends Error {
   constructor(message) {
     super(message);
@@ -687,6 +693,7 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
           logger.error(`analyzeProject failed for project #${project.id}: ${analyzeErr.message}`);
           results.errors++;
           if (!results.openaiError) results.openaiError = analyzeErr.message;
+          project._analyzeFailed = true; // the score-only pass below should not retry it this run
           decide(project, DECISION.error, 'analyze_error', `The AI relevance check failed: ${analyzeErr.message}`);
           continue;
         }
@@ -694,6 +701,8 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
           where: { id: project.id },
           data: { aiAnalysis: JSON.stringify(analysis), relevanceScore: analysis.relevance_score },
         });
+        project.aiAnalysis = JSON.stringify(analysis);
+        project.relevanceScore = analysis.relevance_score;
       }
       results.analyzed++;
 
@@ -1003,6 +1012,66 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
   }
 
   await flushDecisions();
+
+  // Score-only pass: projects skipped before the AI step (job filters, budget,
+  // too many bids, client score, run cap) still get a relevance score so the
+  // Projects page shows a percentage on every row. Runs after bidding so it
+  // never delays a bid, and changes no decision.
+  try {
+    const seen = new Set();
+    const unscored = upsertedProjects.filter(p => {
+      if (p.aiAnalysis || p._analyzeFailed || seen.has(p.id)) return false;
+      seen.add(p.id);
+      return true;
+    }).slice(0, SCORE_ONLY_MAX_PER_RUN);
+
+    // Fill what is left of the cap with recent projects from earlier runs
+    if (unscored.length < SCORE_ONLY_MAX_PER_RUN) {
+      const older = await prisma.project.findMany({
+        where: {
+          aiAnalysis: null,
+          discoveredAt: { gt: new Date(Date.now() - SCORE_ONLY_BACKFILL_MS) },
+          id: { notIn: upsertedProjects.map(p => p.id) },
+        },
+        orderBy: { discoveredAt: 'desc' },
+        take: SCORE_ONLY_MAX_PER_RUN - unscored.length,
+      });
+      for (const r of older) {
+        try {
+          const parsed = r.jobIds ? JSON.parse(r.jobIds) : [];
+          r.jobNames = Array.isArray(parsed) ? parsed.map(j => typeof j === 'object' ? j : { id: j }) : [];
+        } catch { r.jobNames = []; }
+      }
+      unscored.push(...older);
+    }
+
+    let scored = 0;
+    let failed = false;
+    const queue = [...unscored];
+    const worker = async () => {
+      while (queue.length && !failed) {
+        const p = queue.shift();
+        try {
+          const analysis = await analyzeProject(openai, p, profile);
+          await prisma.project.update({
+            where: { id: p.id },
+            data: { aiAnalysis: JSON.stringify(analysis), relevanceScore: analysis.relevance_score },
+          });
+          scored++;
+        } catch (e) {
+          // One failure usually means the key or quota is the problem; stop
+          // and let the next run try again rather than fail on every project.
+          failed = true;
+          logger.warn(`Score-only analysis failed for project #${p.id}: ${e.message}`);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: SCORE_ONLY_CONCURRENCY }, worker));
+    if (scored > 0) logger.info(`Profile "${profile.name}": scored ${scored} skipped project(s) for display`);
+  } catch (e) {
+    logger.warn(`Profile "${profile.name}": score-only pass failed: ${e.message}`);
+  }
+
   return results;
 }
 

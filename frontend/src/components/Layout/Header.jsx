@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import ThemeToggle from '../ThemeToggle'
 import { getSchedulerStatus } from '../../services/scheduler'
 import { getBidQuota } from '../../services/bids'
+import api from '../../services/api'
 
 // Derive a single status string from the API payload
 function deriveStatus(s) {
@@ -43,8 +44,11 @@ function BidQuotaPill({ quota, onRefresh }) {
   if (!quota || !quota.connected) return null
   const { remaining, limit, unlimited, nextRefillAt, source, exhaustedUntil, lastRejection, lastRejectionAt, keys, needsWebLogin, webSession } = quota
   const unknown = !unlimited && (remaining === null || remaining === undefined)
-  const canWebLogin = typeof window !== 'undefined' && !!window.electron?.freelancer
-  const signIn = unknown && needsWebLogin && canWebLogin
+  // Desktop: the app's own sign-in window. Browser: the backend opens one.
+  const webLogin = () => (window.electron?.freelancer
+    ? window.electron.freelancer.webLogin()
+    : api.post('/bids/quota/web-login').then((r) => r.data))
+  const signIn = unknown && needsWebLogin
   const empty = !unknown && !unlimited && remaining <= 0
   const assumed = empty && source === 'rejection' // 0 inferred from a rejected bid, not reported by Freelancer
   const low = !unknown && !empty && remaining <= 5
@@ -71,7 +75,7 @@ function BidQuotaPill({ quota, onRefresh }) {
   return (
     <button
       type="button"
-      onClick={signIn ? () => window.electron.freelancer.webLogin().then((r) => { if (r?.ok) onRefresh() }).catch(() => {}) : onRefresh}
+      onClick={signIn ? () => webLogin().then((r) => { if (r?.ok) onRefresh() }).catch(() => {}) : onRefresh}
       title={title}
       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${signIn ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-700' : cls}`}
     >
