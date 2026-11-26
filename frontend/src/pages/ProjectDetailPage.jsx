@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { timeAgo, formatBudget } from '../../utils/formatters'
-import { getProjectDetail, analyzeProject, generateProposal } from '../../services/projects'
-import { placeBid } from '../../services/bids'
-import { decisionLabel, decisionTone, decisionDetail } from '../../utils/decisions'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
+import api from '../services/api'
+import { timeAgo, formatBudget, formatAmount } from '../utils/formatters'
+import { getProjectDetail, analyzeProject, generateProposal } from '../services/projects'
+import { placeBid } from '../services/bids'
 
 const _regionNames = new Intl.DisplayNames(['en'], { type: 'region' })
 
@@ -29,7 +30,104 @@ function currencySymbol(code) {
   }
 }
 
-export default function ProjectDetailModal({ project, isOpen, onClose, onProjectUpdated }) {
+
+// Time from the project being posted to the bid being placed: "50s", "1m 20s", "2h 5m".
+function bidDelay(postedAt, placedAt) {
+  const s = Math.round((new Date(placedAt) - new Date(postedAt)) / 1000)
+  if (!Number.isFinite(s) || s < 0) return null
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
+  return `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h`
+}
+
+// Small icon button that copies `text`; shows a tick for two seconds afterwards.
+function CopyButton({ text, label, className = '' }) {
+  const [done, setDone] = useState(false)
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(String(text || ''))
+      setDone(true)
+      setTimeout(() => setDone(false), 2000)
+    } catch { /* clipboard blocked: nothing to show */ }
+  }
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      title={done ? 'Copied' : `Copy ${label}`}
+      aria-label={`Copy ${label}`}
+      className={`shrink-0 p-1.5 rounded-lg transition-colors ${done ? 'text-emerald-500' : 'text-slate-400 dark:text-slate-500 hover:text-navy-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10'} ${className}`}
+    >
+      {done ? (
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+        </svg>
+      ) : (
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" />
+        </svg>
+      )}
+    </button>
+  )
+}
+
+// Chevron that shows or hides a section: points up while open, down while hidden.
+function ChevronToggle({ open, onToggle, label }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      title={open ? `Hide ${label}` : `Show ${label}`}
+      aria-label={open ? `Hide ${label}` : `Show ${label}`}
+      aria-expanded={open}
+      className="shrink-0 p-1.5 rounded-lg text-slate-400 dark:text-slate-500 hover:text-navy-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
+    >
+      <svg className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+      </svg>
+    </button>
+  )
+}
+
+function bidStatusLabel(bid) {
+  if (bid.awardStatus === 'awarded') return 'awarded'
+  return { pending_review: 'needs review', pending: 'placing…', placed: 'placed', converted: 'converted', rejected: 'rejected', retracted: 'retracted', error: 'error', dismissed: 'dismissed' }[bid.status] || bid.status
+}
+
+function bidStatusTone(status) {
+  if (status === 'error' || status === 'rejected') return 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+  if (status === 'placed' || status === 'converted') return 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+  if (status === 'pending_review' || status === 'pending') return 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+  return 'bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300'
+}
+
+// The stored row keeps its skills as a JSON string (jobIds); the page wants
+// them as [{ id, name }].
+function withJobNames(p) {
+  if (!p) return p
+  if (Array.isArray(p.jobNames) && p.jobNames.length > 0) return p
+  let jobNames = []
+  try {
+    const parsed = p.jobIds ? JSON.parse(p.jobIds) : []
+    jobNames = Array.isArray(parsed) ? parsed.filter((j) => j && typeof j === 'object' && j.name) : []
+  } catch { /* no skills to show */ }
+  return { ...p, jobNames }
+}
+
+// Project details as a page of its own (/projects/:id), opened from the
+// Projects list and from Bid History.
+export default function ProjectDetailPage() {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const location = useLocation()
+  // The list hands the row over so the page shows at once; it is then
+  // re-read from the app so a reload or a direct link works too.
+  const [project, setProject] = useState(() => {
+    const handed = location.state?.project
+    return handed && String(handed.id) === String(id) ? withJobNames(handed) : null
+  })
+  const [loadError, setLoadError] = useState(null)
   const [detail, setDetail] = useState(null)
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [detailError, setDetailError] = useState(null)
@@ -40,6 +138,8 @@ export default function ProjectDetailModal({ project, isOpen, onClose, onProject
   const [generating, setGenerating] = useState(false)
   const [generateError, setGenerateError] = useState(null)
   const [copied, setCopied] = useState(false)
+  const [showBid, setShowBid] = useState(true)                 // "Your bid" section open
+  const [showDescription, setShowDescription] = useState(true) // "Description" section open
   const [showBidForm, setShowBidForm] = useState(false)
   const [bidAmount, setBidAmount] = useState('')
   const [bidPeriod, setBidPeriod] = useState('7')
@@ -48,41 +148,38 @@ export default function ProjectDetailModal({ project, isOpen, onClose, onProject
   const [bidError, setBidError] = useState(null)
 
   useEffect(() => {
-    if (isOpen && project) {
-      setDetail(null)
-      setDetailError(null)
-      setLoadingDetail(true)
-      setAnalyzeError(null)
-      setGenerateError(null)
-      setProposal(null)
-      setCopied(false)
-      setShowBidForm(false)
-      setBidAmount('')
-      setBidPeriod('7')
-      setPlacing(false)
-      setBidSuccess(false)
-      setBidError(null)
-      getProjectDetail(project.id)
-        .then((data) => setDetail(data))
-        .catch(() => {
-          setDetail(null)
-          setDetailError("Couldn't load full project details")
-        })
-        .finally(() => setLoadingDetail(false))
+    let cancelled = false
+    setLoadError(null)
+    setDetail(null)
+    setDetailError(null)
+    setLoadingDetail(true)
+    window.scrollTo(0, 0)
 
-      // Load existing analysis from project data
-      if (project.aiAnalysis) {
-        try { setAnalysis(JSON.parse(project.aiAnalysis)) } catch { setAnalysis(null) }
-      } else {
-        setAnalysis(null)
-      }
-    } else {
-      setDetail(null)
-      setDetailError(null)
-      setAnalysis(null)
-      setProposal(null)
-    }
-  }, [isOpen, project?.id])
+    api.get(`/projects/${id}`)
+      .then(({ data }) => {
+        if (cancelled) return
+        setProject((prev) => {
+          const fresh = withJobNames(data.project)
+          return { ...(prev || {}), ...fresh, jobNames: fresh.jobNames.length > 0 ? fresh.jobNames : (prev?.jobNames || []) }
+        })
+      })
+      .catch((err) => {
+        if (!cancelled) setLoadError(err.response?.status === 404 ? 'This project is not in BidPilot any more.' : (err.response?.data?.error || 'Could not load the project.'))
+      })
+
+    getProjectDetail(id)
+      .then((data) => { if (!cancelled) setDetail(data) })
+      .catch(() => { if (!cancelled) { setDetail(null); setDetailError("Couldn't load full project details") } })
+      .finally(() => { if (!cancelled) setLoadingDetail(false) })
+
+    return () => { cancelled = true }
+  }, [id])
+
+  // Show the saved AI analysis as soon as the project is known
+  useEffect(() => {
+    if (!project?.aiAnalysis) return
+    try { setAnalysis(JSON.parse(project.aiAnalysis)) } catch { /* keep what is shown */ }
+  }, [project?.aiAnalysis])
 
   // Pre-populate bid fields when analysis becomes available
   useEffect(() => {
@@ -92,7 +189,43 @@ export default function ProjectDetailModal({ project, isOpen, onClose, onProject
     }
   }, [analysis])
 
-  if (!isOpen || !project) return null
+  // The account's bid on this project, when there is one
+  const bid = project?.bid || null
+  const bidWhen = bid ? (bid.placedAt || bid.createdAt) : null
+  const bidDeadline = bid && bidWhen && bid.periodDays
+    ? new Date(new Date(bidWhen).getTime() + bid.periodDays * 86400000).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+    : null
+  const bidSpeed = bid?.placedAt && project?.timeSubmitted ? bidDelay(project.timeSubmitted, bid.placedAt) : null
+
+  // Back to wherever the page was opened from; the Projects list on a direct link.
+  const goBack = () => (location.key !== 'default' ? navigate(-1) : navigate('/projects'))
+
+  const backButton = (
+    <button
+      type="button"
+      onClick={goBack}
+      className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-navy-950 dark:hover:text-white transition-colors"
+    >
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+      </svg>
+      Back
+    </button>
+  )
+
+  if (!project) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-4">
+        {backButton}
+        <div className="p-10 rounded-xl border border-slate-200 dark:border-white/8 bg-white dark:bg-navy-800/90 text-center">
+          {loadError
+            ? <p className="text-sm text-red-600 dark:text-red-400">{loadError}</p>
+            : <div className="w-6 h-6 mx-auto border-2 border-navy-900 dark:border-emerald-400 border-t-transparent dark:border-t-transparent rounded-full animate-spin" />}
+        </div>
+      </div>
+    )
+  }
+
 
   const fullDescription = detail?.fullDescription || project.description || 'No description available.'
 
@@ -102,7 +235,7 @@ export default function ProjectDetailModal({ project, isOpen, onClose, onProject
     try {
       const data = await analyzeProject(project.id)
       setAnalysis(data.analysis)
-      if (onProjectUpdated) onProjectUpdated(data.project)
+      if (data.project) setProject((prev) => ({ ...prev, ...data.project, jobNames: prev?.jobNames || [] }))
     } catch (err) {
       setAnalyzeError(err.response?.data?.error || 'Analysis failed')
     } finally {
@@ -166,56 +299,73 @@ export default function ProjectDetailModal({ project, isOpen, onClose, onProject
       ? 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800'
       : 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800'
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4" onClick={onClose}>
-      {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" />
 
-      {/* Panel */}
-      <div
-        className="relative bg-white dark:bg-navy-900 dark:border dark:border-white/8 rounded-xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="px-6 py-5 border-b border-slate-100 dark:border-white/8 flex items-start justify-between gap-4 shrink-0">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              {project.projectType && (
-                <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
-                  project.projectType === 'fixed'
-                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
-                    : 'bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400'
-                }`}>
-                  {project.projectType === 'fixed' ? 'Fixed Price' : 'Hourly'}
-                </span>
-              )}
-              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                project.status === 'active'
-                  ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
-                  : 'bg-slate-100 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400'
-              }`}>
-                {project.status === 'active' ? 'Active' : project.status}
-              </span>
-              {analysis && (
-                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${scoreColor}`}>
-                  {analysis.relevance_score}% match
-                </span>
-              )}
-            </div>
-            <h2 className="text-lg font-semibold text-navy-950 dark:text-white leading-snug" title={project.title}>{project.title}</h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="shrink-0 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-navy-700 transition-colors text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-200"
+  return (
+    <div className="max-w-4xl mx-auto space-y-4">
+      <div className="flex items-center justify-between gap-4">
+        {backButton}
+        <div className="flex items-center gap-2">
+          <a
+            href={`https://www.freelancer.com/projects/${project.freelancerProjectId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-navy-800 border border-slate-300 dark:border-white/10 rounded-lg hover:bg-slate-50 dark:hover:bg-navy-700 transition-colors"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-            </svg>
-          </button>
+            View on Freelancer
+          </a>
+          {bidSuccess || ['placed', 'converted', 'pending'].includes(bid?.status) ? (
+            <button disabled className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 rounded-lg">
+              Bid Placed
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                setShowBidForm(!showBidForm)
+                if (!showBidForm) setTimeout(() => document.getElementById('project-bid-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50)
+              }}
+              disabled={placing}
+              className="px-4 py-2 text-sm font-medium text-white dark:text-navy-950 bg-navy-900 dark:bg-emerald-400 rounded-lg hover:bg-navy-800 dark:hover:bg-emerald-500 transition-colors shadow-sm disabled:opacity-50"
+            >
+              {showBidForm ? 'Hide Bid Form' : 'Bid on Project'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-navy-800/90 rounded-xl border border-slate-200 dark:border-white/6 shadow-lg dark:shadow-2xl dark:shadow-black/50">
+        {/* Header */}
+        <div className="px-6 py-5 border-b border-slate-100 dark:border-white/8">
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
+            {project.projectType && (
+              <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
+                project.projectType === 'fixed'
+                  ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+                  : 'bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400'
+              }`}>
+                {project.projectType === 'fixed' ? 'Fixed Price' : 'Hourly'}
+              </span>
+            )}
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+              project.status === 'active'
+                ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                : 'bg-slate-100 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400'
+            }`}>
+              {project.status === 'active' ? 'Active' : project.status}
+            </span>
+            {analysis && (
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${scoreColor}`}>
+                {analysis.relevance_score}% match
+              </span>
+            )}
+          </div>
+          <div className="flex items-start gap-2">
+            <h1 className="text-2xl font-bold text-navy-950 dark:text-white leading-snug">{project.title}</h1>
+            <CopyButton text={project.title} label="title" className="mt-1" />
+          </div>
         </div>
 
         {/* Body */}
-        <div className="px-6 py-5 overflow-y-auto space-y-5 flex-1">
+        <div className="px-6 py-5 space-y-5">
           {/* Budget & Stats */}
           <div className="flex items-center gap-6 flex-wrap">
             <div>
@@ -224,6 +374,17 @@ export default function ProjectDetailModal({ project, isOpen, onClose, onProject
                 {formatBudget(project.budgetMin, project.budgetMax, project.currency)}
               </p>
             </div>
+            {project.bidAvg != null && project.bidAvg > 0 && (
+              <>
+                <div className="h-8 w-px bg-slate-200 dark:bg-white/10" />
+                <div>
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5">Average bid</p>
+                  <p className="text-lg font-semibold text-navy-950 dark:text-white">
+                    {formatAmount(Math.round(project.bidAvg), project.currency)}{project.projectType === 'hourly' ? <span className="text-sm font-medium"> / hour</span> : null}
+                  </p>
+                </div>
+              </>
+            )}
             <div className="h-8 w-px bg-slate-200 dark:bg-white/10" />
             <div>
               <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5">Bids</p>
@@ -253,38 +414,57 @@ export default function ProjectDetailModal({ project, isOpen, onClose, onProject
             })()}
           </div>
 
-          {/* Why BidPilot did or did not bid */}
-          {decisionLabel(project) && (
-            <div className="p-3.5 rounded-lg bg-slate-50 dark:bg-navy-800/50 border border-slate-200 dark:border-white/8">
-              <div className="flex items-center gap-2 mb-1">
-                <p className="text-xs font-medium text-slate-500 dark:text-slate-400">BidPilot decision</p>
-                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${decisionTone(project)}`}>{decisionLabel(project)}</span>
-                {project.decidedAt && <span className="text-[11px] text-slate-400">{timeAgo(project.decidedAt)}</span>}
+          {/* The bid placed (or drafted) on this project */}
+          {bid && (
+            <div className="rounded-xl border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/60 dark:bg-emerald-900/10 overflow-hidden">
+              <div className={`flex items-center justify-between gap-3 px-4 py-3 ${showBid ? 'border-b border-emerald-200/70 dark:border-emerald-500/20' : ''}`}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-semibold text-navy-950 dark:text-white">Your bid</p>
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${bidStatusTone(bid.status)}`}>{bidStatusLabel(bid)}</span>
+                  {bid.profile?.name && <span className="text-xs text-slate-500 dark:text-slate-400">profile: {bid.profile.name}</span>}
+                  {bid.sealed && <span className="text-xs text-slate-500 dark:text-slate-400">sealed</span>}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {bidWhen && <span className="text-xs text-slate-500 dark:text-slate-400" title={new Date(bidWhen).toLocaleString()}>{bid.placedAt ? 'placed' : 'created'} {timeAgo(bidWhen)}</span>}
+                  <ChevronToggle open={showBid} onToggle={() => setShowBid((v) => !v)} label="your bid" />
+                </div>
               </div>
-              {decisionDetail(project) && <p className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap">{decisionDetail(project)}</p>}
-            </div>
-          )}
-
-          {/* Client */}
-          {(project.clientScore != null || project.ownerPaymentVerified != null) && (
-            <div className="p-3.5 rounded-lg bg-slate-50 dark:bg-navy-800/50 border border-slate-200 dark:border-white/8">
-              <div className="flex items-center gap-2 mb-1">
-                <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Client</p>
-                {project.clientScore != null && (
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${project.clientScore >= 65 ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : project.clientScore >= 35 ? 'bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300' : 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'}`}>
-                    score {project.clientScore}/100
-                  </span>
-                )}
+              {showBid && (<>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 px-4 py-4">
+                <div>
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5">Bid price</p>
+                  <p className="text-xl font-semibold text-emerald-600 dark:text-emerald-400">
+                    {formatAmount(bid.amount, project.currency)}{project.projectType === 'hourly' ? <span className="text-sm font-medium"> / hour</span> : null}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5">Delivery</p>
+                  <p className="text-xl font-semibold text-navy-950 dark:text-white">{bid.periodDays} day{bid.periodDays === 1 ? '' : 's'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5">Deadline</p>
+                  <p className="text-sm font-medium text-navy-950 dark:text-white mt-1.5">{bidDeadline || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5">Bid speed</p>
+                  <p className="text-sm font-medium text-navy-950 dark:text-white mt-1.5">{bidSpeed || '—'}</p>
+                </div>
               </div>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700 dark:text-slate-200">
-                {project.ownerPaymentVerified != null && <span>{project.ownerPaymentVerified ? '✓ payment verified' : '○ payment not verified'}</span>}
-                {project.ownerDepositMade && <span>✓ deposit made</span>}
-                {project.ownerReviews != null && <span>{project.ownerReviews} review{project.ownerReviews === 1 ? '' : 's'}{project.ownerRating != null ? ` · ${Number(project.ownerRating).toFixed(1)} ★` : ''}</span>}
-                {project.ownerProjectsAll != null && project.ownerProjectsAll > 0 && <span>{project.ownerProjectsComplete ?? 0} of {project.ownerProjectsAll} projects completed</span>}
-                {project.ownerRegisteredAt && <span>member since {new Date(project.ownerRegisteredAt).getFullYear()}</span>}
-                {project.bidAvg != null && project.bidAvg > 0 && <span>average bid {Math.round(project.bidAvg)} {project.currency}</span>}
-              </div>
-              {project.clientScoreReasons && <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400 whitespace-pre-wrap">{project.clientScoreReasons}</p>}
+              {bid.errorMessage && (
+                <p className="mx-4 mb-3 p-2.5 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-400">{bid.errorMessage}</p>
+              )}
+              {bid.proposalText && (
+                <div className="px-4 pb-4">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Bid description</p>
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500">{bid.proposalText.length} characters</span>
+                  </div>
+                  <div className="p-3.5 rounded-lg bg-white dark:bg-navy-900/70 border border-slate-200 dark:border-white/8 text-sm text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
+                    {bid.proposalText}
+                  </div>
+                </div>
+              )}
+              </>)}
             </div>
           )}
 
@@ -304,8 +484,12 @@ export default function ProjectDetailModal({ project, isOpen, onClose, onProject
 
           {/* Description */}
           <div>
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Description</p>
-            {loadingDetail ? (
+            <div className={`flex items-center gap-1 ${showDescription ? 'mb-2' : ''}`}>
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mr-0.5">Description</p>
+              {!loadingDetail && <CopyButton text={fullDescription} label="description" />}
+              <ChevronToggle open={showDescription} onToggle={() => setShowDescription((v) => !v)} label="description" />
+            </div>
+            {!showDescription ? null : loadingDetail ? (
               <div className="flex items-center gap-2 py-4">
                 <div className="w-4 h-4 border-2 border-navy-500 dark:border-emerald-400 border-t-transparent dark:border-t-transparent rounded-full animate-spin" />
                 <span className="text-sm text-slate-400 dark:text-slate-500">Loading full description...</span>
@@ -556,7 +740,7 @@ export default function ProjectDetailModal({ project, isOpen, onClose, onProject
 
           {/* Bid Form */}
           {showBidForm && (
-            <div className="space-y-3 p-4 rounded-lg bg-navy-50 dark:bg-navy-800/50 border border-navy-200 dark:border-white/8">
+            <div id="project-bid-form" className="space-y-3 p-4 rounded-lg bg-navy-50 dark:bg-navy-800/50 border border-navy-200 dark:border-white/8">
               <p className="text-xs font-semibold text-navy-800 dark:text-slate-200 uppercase tracking-wide">Place Your Bid</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -627,42 +811,6 @@ export default function ProjectDetailModal({ project, isOpen, onClose, onProject
           <p className="text-xs text-slate-400 dark:text-slate-500">
             Freelancer Project #{project.freelancerProjectId}
           </p>
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-slate-100 dark:border-white/8 flex items-center justify-between shrink-0">
-          <a
-            href={`https://www.freelancer.com/projects/${project.freelancerProjectId}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-navy-600 dark:text-emerald-400 hover:text-navy-800 dark:hover:text-emerald-300 font-medium transition-colors"
-          >
-            View on Freelancer
-          </a>
-          <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-200 bg-slate-100 dark:bg-navy-800 rounded-lg hover:bg-slate-200 dark:hover:bg-navy-700 transition-colors"
-            >
-              Close
-            </button>
-            {bidSuccess ? (
-              <button
-                disabled
-                className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 rounded-lg"
-              >
-                Bid Placed
-              </button>
-            ) : (
-              <button
-                onClick={() => setShowBidForm(!showBidForm)}
-                disabled={placing}
-                className="px-4 py-2 text-sm font-medium text-white dark:text-navy-950 bg-navy-900 dark:bg-emerald-400 rounded-lg hover:bg-navy-800 dark:hover:bg-emerald-500 transition-colors shadow-sm disabled:opacity-50"
-              >
-                {showBidForm ? 'Hide Bid Form' : 'Bid on Project'}
-              </button>
-            )}
-          </div>
         </div>
       </div>
     </div>

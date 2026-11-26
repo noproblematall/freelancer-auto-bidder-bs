@@ -1,9 +1,8 @@
-import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useEffect, useRef } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useProjects } from '../hooks/useProjects'
 import { timeAgo, formatBudget, formatAmount } from '../utils/formatters'
-import ProjectDetailModal from '../components/Projects/ProjectDetailModal'
 import { decisionLabel, decisionTone, decisionDetail } from '../utils/decisions'
 import api from '../services/api'
 
@@ -123,18 +122,48 @@ function getDetailedSkipReason(project, activeProfiles, userBids) {
   return null
 }
 
+// Where the list was (search, filters, page, scroll), kept for the browser
+// session so coming back from a project's page lands on the same spot.
+const LIST_STATE_KEY = 'projects.listState'
+function readListState() {
+  try { return JSON.parse(sessionStorage.getItem(LIST_STATE_KEY) || '{}') || {} } catch { return {} }
+}
+
 export default function ProjectsPage() {
   const { freelancer } = useAuth()
-  const { projects, totalCount, hiddenCount, loading, searching, error, fetchProjects, searchFreelancer, updateProject } = useProjects()
+  const navigate = useNavigate()
+  const { projects, totalCount, hiddenCount, loading, searching, error, fetchProjects, searchFreelancer } = useProjects()
 
-  const [query, setQuery] = useState('')
+  const [saved] = useState(readListState)
+  const [query, setQuery] = useState(saved.query || '')
   const [showFilters, setShowFilters] = useState(false)
-  const [minBudget, setMinBudget] = useState('')
-  const [maxBudget, setMaxBudget] = useState('')
-  const [projectType, setProjectType] = useState('both')
-  const [sortBy, setSortBy] = useState('discoveredAt')
-  const [offset, setOffset] = useState(0)
-  const [selectedProject, setSelectedProject] = useState(null)
+  const [minBudget, setMinBudget] = useState(saved.minBudget || '')
+  const [maxBudget, setMaxBudget] = useState(saved.maxBudget || '')
+  const [projectType, setProjectType] = useState(saved.projectType || 'both')
+  const [sortBy, setSortBy] = useState(saved.sortBy || 'discoveredAt')
+  const [offset, setOffset] = useState(Number.isInteger(saved.offset) ? saved.offset : 0)
+  const firstRun = useRef(true)
+  const pendingScroll = useRef(Number.isFinite(saved.scrollY) ? saved.scrollY : null)
+
+  useEffect(() => {
+    try {
+      const prev = readListState()
+      sessionStorage.setItem(LIST_STATE_KEY, JSON.stringify({ ...prev, query, minBudget, maxBudget, projectType, sortBy, offset }))
+    } catch { /* private mode: the list just starts from the top */ }
+  }, [query, minBudget, maxBudget, projectType, sortBy, offset])
+
+  // Back from a project's page: return to where the list was scrolled.
+  useEffect(() => {
+    if (pendingScroll.current === null || loading || projects.length === 0) return
+    const y = pendingScroll.current
+    pendingScroll.current = null
+    requestAnimationFrame(() => window.scrollTo(0, y))
+  }, [loading, projects.length])
+
+  function openProject(project) {
+    try { sessionStorage.setItem(LIST_STATE_KEY, JSON.stringify({ ...readListState(), scrollY: window.scrollY })) } catch { /* ignore */ }
+    navigate(`/projects/${project.id}`, { state: { project } })
+  }
 
   // Fetch active profiles and bids for detailed skip reasons
   const [activeProfiles, setActiveProfiles] = useState([])
@@ -169,13 +198,14 @@ export default function ProjectsPage() {
     return params
   }
 
-  // Load from local DB on mount
+  // Load from local DB on mount (the page it was on, when coming back)
   useEffect(() => {
-    fetchProjects(buildLocalParams(0))
+    fetchProjects(buildLocalParams(offset))
   }, [])
 
   // Auto-refresh from local DB when sort/filter changes
   useEffect(() => {
+    if (firstRun.current) { firstRun.current = false; return }
     setOffset(0)
     fetchProjects(buildLocalParams(0))
   }, [sortBy, projectType])
@@ -362,7 +392,7 @@ export default function ProjectsPage() {
             {projects.map((project) => (
               <button
                 key={project.id}
-                onClick={() => setSelectedProject(project)}
+                onClick={() => openProject(project)}
                 className="w-full text-left bg-white dark:bg-navy-800/90 rounded-xl border border-slate-200 dark:border-white/6 shadow-lg dark:shadow-2xl dark:shadow-black/50 hover:shadow-xl dark:hover:shadow-2xl dark:hover:shadow-black/60 hover:border-slate-300 dark:hover:border-navy-500 transition-all p-5"
               >
                 {/* Line 1: title, type and bid state on the left; budget on the right */}
@@ -521,13 +551,6 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      {/* Detail Modal */}
-      <ProjectDetailModal
-        project={selectedProject}
-        isOpen={!!selectedProject}
-        onClose={() => setSelectedProject(null)}
-        onProjectUpdated={updateProject}
-      />
     </div>
   )
 }

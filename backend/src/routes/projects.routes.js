@@ -168,8 +168,23 @@ router.get('/:id', async (req, res, next) => {
   try {
     const project = await prisma.project.findUnique({
       where: { id: parseInt(req.params.id) },
+      // The account's latest bid on the project, in full, for the project page
+      include: {
+        bids: {
+          where: { userId: req.userId },
+          orderBy: { id: 'desc' },
+          take: 1,
+          select: {
+            id: true, status: true, awardStatus: true, amount: true, periodDays: true, proposalText: true, sealed: true,
+            placedAt: true, createdAt: true, clientRepliedAt: true, followUpAt: true, errorMessage: true,
+            profile: { select: { id: true, name: true } },
+          },
+        },
+      },
     });
     if (!project) return res.status(404).json({ error: 'Project not found' });
+    project.bid = project.bids?.[0] || null;
+    delete project.bids;
     res.json({ project });
   } catch (err) {
     next(err);

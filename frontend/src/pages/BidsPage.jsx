@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useSearchParams, Link } from 'react-router-dom'
+import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { useBids } from '../hooks/useBids'
 import { useConfirm } from '../components/ConfirmDialog'
-import ProjectDetailModal from '../components/Projects/ProjectDetailModal'
 import { timeAgo, formatAmount, formatBudget } from '../utils/formatters'
 
 // Time from the project being posted to the bid being placed: "50s",
@@ -16,8 +15,8 @@ function bidDelay(postedAt, placedAt) {
   return `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h`
 }
 
-// The project row as the Projects page's detail modal expects it (jobNames parsed).
-function projectForModal(project) {
+// The project row as the project page expects it (jobNames parsed).
+function projectForPage(project) {
   if (!project) return null
   let jobNames = []
   try {
@@ -76,7 +75,7 @@ export default function BidsPage() {
   const [activeFilter, setActiveFilter] = useState(() => searchParams.get('filter') || 'all')
   const [offset, setOffset] = useState(0)
   const [expandedBid, setExpandedBid] = useState(null)
-  const [openProject, setOpenProject] = useState(null)
+  const navigate = useNavigate()
   const [retractingId, setRetractingId] = useState(null)
   const [retryingId, setRetryingId] = useState(null)
   const [placingNowId, setPlacingNowId] = useState(null)
@@ -495,12 +494,6 @@ export default function BidsPage() {
             </button>
           ))}
         </div>
-        {isRefreshing && (
-          <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500 shrink-0">
-            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-            <span>Refreshing...</span>
-          </div>
-        )}
         <div className="relative shrink-0">
           <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
@@ -607,7 +600,7 @@ export default function BidsPage() {
                     <div className="flex items-center gap-2 mb-1">
                       <h3 className="text-sm font-semibold text-navy-950 dark:text-white truncate" title={bid.project?.title || ''}>
                         {bid.project ? (
-                          <button type="button" onClick={() => setOpenProject(projectForModal(bid.project))} className="text-left hover:underline hover:text-navy-700 dark:hover:text-emerald-400 transition-colors" title="Open project details">
+                          <button type="button" onClick={() => navigate(`/projects/${bid.project.id}`, { state: { project: projectForPage(bid.project) } })} className="text-left hover:underline hover:text-navy-700 dark:hover:text-emerald-400 transition-colors" title="Open project details">
                             {bid.project.title}
                           </button>
                         ) : `Project #${bid.projectId}`}
@@ -991,13 +984,6 @@ export default function BidsPage() {
         </div>
       )}
 
-      {/* Project details, the same panel as on the Projects page */}
-      <ProjectDetailModal
-        project={openProject}
-        isOpen={!!openProject}
-        onClose={() => setOpenProject(null)}
-        onProjectUpdated={(updated) => setOpenProject(prev => (prev ? { ...prev, ...updated } : prev))}
-      />
     </div>
   )
 }

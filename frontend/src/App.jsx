@@ -8,6 +8,7 @@ import ProfilesPage from './pages/ProfilesPage'
 import ProfileFormPage from './pages/ProfileFormPage'
 import JobFiltersPage from './pages/JobFiltersPage'
 import ProjectsPage from './pages/ProjectsPage'
+import ProjectDetailPage from './pages/ProjectDetailPage'
 import BidsPage from './pages/BidsPage'
 import ActivityLogsPage from './pages/ActivityLogsPage'
 import SettingsPage from './pages/SettingsPage'
@@ -52,6 +53,7 @@ export default function App() {
           <Route path="/profiles/:id/edit" element={<ProfileFormPage />} />
           <Route path="/job-filters" element={<JobFiltersPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/projects/:id" element={<ProjectDetailPage />} />
           <Route path="/bids" element={<BidsPage />} />
           <Route path="/clients" element={<ClientsPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
