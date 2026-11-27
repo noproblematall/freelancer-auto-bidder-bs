@@ -66,6 +66,35 @@ async function getProjectBids(client, projectId, { limit = 200 } = {}) {
   return { bids: result.bids || [], users: result.users || {} };
 }
 
+// Only the awarded bid(s) on up to ~20 projects in one request, with the
+// winners' details. Filtering on Freelancer's side finds the winner even on
+// projects with hundreds of bids, where it is often past the first 200.
+async function getAwardedBids(client, projectIds) {
+  const ids = (projectIds || []).filter(Boolean);
+  if (!ids.length) return { bids: [], users: {} };
+  const response = await client.get('/projects/0.1/bids/', {
+    params: {
+      'projects[]': ids, 'award_statuses[]': ['awarded'], limit: Math.max(50, ids.length * 3),
+      user_details: true, user_reputation: true, user_country_details: true, user_status: true, user_display_info: true,
+    },
+  });
+  const result = response.data?.result || {};
+  return { bids: result.bids || [], users: result.users || {} };
+}
+
+// The account's own bids on Freelancer, newest first, back to `sinceSec`
+// (unix seconds). Includes bids placed outside this app.
+async function getAccountBids(client, bidderId, { sinceSec = 0, max = 10000 } = {}) {
+  const out = [];
+  for (let offset = 0; offset < max; offset += 100) {
+    const response = await client.get('/projects/0.1/bids/', { params: { 'bidders[]': [bidderId], limit: 100, offset } });
+    const page = response.data?.result?.bids || [];
+    for (const b of page) if (!b.retracted && (b.time_submitted || 0) >= sinceSec) out.push(b);
+    if (page.length < 100 || page.every((b) => (b.time_submitted || 0) < sinceSec)) break;
+  }
+  return out;
+}
+
 // Attempt to seal a previously-placed bid via PUT ?action=seal (mirrors the
 // documented `action=highlight` / `action=sponsor` upgrade pattern). The
 // action isn't in the documented enum, so callers must verify by re-reading
@@ -112,4 +141,4 @@ async function retractBid(client, freelancerBidId) {
   return response.data;
 }
 
-module.exports = { MILESTONE_PERCENTAGE, placeBid, getBids, getMyBidsForProjects, getProjectBids, retractBid, sealBid, getBidById };
+module.exports = { MILESTONE_PERCENTAGE, placeBid, getBids, getMyBidsForProjects, getProjectBids, getAwardedBids, getAccountBids, retractBid, sealBid, getBidById };

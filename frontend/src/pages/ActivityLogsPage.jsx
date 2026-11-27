@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useActivity } from '../hooks/useActivity'
+import { usePageParams } from '../hooks/usePageParams'
 import { timeAgo } from '../utils/formatters'
-
-const LIMIT = 20
+import Pagination from '../components/Pagination'
 
 const FILTER_OPTIONS = [
   { key: 'all', label: 'All Activities' },
@@ -99,31 +100,30 @@ const ACTION_LABELS = {
 
 export default function ActivityLogsPage() {
   const { logs, totalCount, stats, loading, error, fetchLogs, fetchStats } = useActivity()
-  const [activeFilter, setActiveFilter] = useState('all')
-  const [offset, setOffset] = useState(0)
+  const [searchParams, setSearchParams] = useSearchParams()
+  // Filter, page and page size live in the address, so a reload shows the same rows.
+  const activeFilter = searchParams.get('filter') || 'all'
+  const { page, size, offset, setPage, setSize } = usePageParams()
   const [expandedLog, setExpandedLog] = useState(null)
+  const actionParam = activeFilter === 'all' ? undefined : activeFilter
 
   useEffect(() => {
-    fetchLogs({ limit: LIMIT, offset: 0 })
-    fetchStats()
-  }, [fetchLogs, fetchStats])
+    fetchLogs({ limit: size, offset, action: actionParam })
+  }, [fetchLogs, size, offset, actionParam])
+  useEffect(() => { fetchStats() }, [fetchStats])
 
   function handleFilterChange(filterKey) {
-    setActiveFilter(filterKey)
-    setOffset(0)
-    fetchLogs({ limit: LIMIT, offset: 0, action: filterKey })
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (filterKey === 'all') next.delete('filter'); else next.set('filter', filterKey)
+      next.delete('page')
+      return next
+    }, { replace: true })
   }
 
-  function handlePrev() {
-    const newOffset = Math.max(0, offset - LIMIT)
-    setOffset(newOffset)
-    fetchLogs({ limit: LIMIT, offset: newOffset, action: activeFilter === 'all' ? undefined : activeFilter })
-  }
-
-  function handleNext() {
-    const newOffset = offset + LIMIT
-    setOffset(newOffset)
-    fetchLogs({ limit: LIMIT, offset: newOffset, action: activeFilter === 'all' ? undefined : activeFilter })
+  function handlePage(p) {
+    setPage(p)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   function formatActionLabel(action) {
@@ -343,27 +343,7 @@ export default function ActivityLogsPage() {
           </div>
 
           {/* Pagination */}
-          <div className="flex items-center justify-between pt-2">
-            <p className="text-sm text-slate-700 dark:text-slate-200">
-              Showing {offset + 1}–{Math.min(offset + LIMIT, totalCount)} of {totalCount}
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={handlePrev}
-                disabled={offset === 0}
-                className="px-3.5 py-2 text-sm font-medium bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg hover:bg-slate-50 dark:hover:bg-navy-800 transition-colors disabled:opacity-40"
-              >
-                Previous
-              </button>
-              <button
-                onClick={handleNext}
-                disabled={offset + LIMIT >= totalCount}
-                className="px-3.5 py-2 text-sm font-medium bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg hover:bg-slate-50 dark:hover:bg-navy-800 transition-colors disabled:opacity-40"
-              >
-                Next
-              </button>
-            </div>
-          </div>
+          <Pagination page={page} pageSize={size} total={totalCount} onPage={handlePage} onPageSize={setSize} className="pt-2" />
         </>
       )}
 

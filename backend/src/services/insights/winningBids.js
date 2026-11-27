@@ -4,7 +4,8 @@
 // the pattern into changes to our pricing, prompt and profile.
 const prisma = require('../../config/database');
 const { createFreelancerClient } = require('../freelancer/client');
-const { getProjectBids } = require('../freelancer/bids');
+const { getAwardedBids, getAccountBids } = require('../freelancer/bids');
+const { projectDataFromApi, forPrisma } = require('../freelancer/projectMapper');
 const { decrypt, isExpired } = require('../../utils/tokenManager');
 const { askJson, saveReport, latestReport } = require('./ai');
 const logger = require('../../utils/logger');
@@ -31,83 +32,165 @@ function bidderFacts(users, bidderId) {
   };
 }
 
-// Read the awarded bid on one project from Freelancer and store it.
-async function captureWinningBid(client, { project, myUid }) {
-  const { bids, users } = await getProjectBids(client, project.freelancerProjectId);
-  const winner = bids.find((b) => String(b.award_status || '').toLowerCase() === 'awarded');
-  if (!winner) return null;
-  const amounts = bids.map((b) => num(b.amount)).filter((a) => a !== null && a > 0);
-  const data = {
+// Freelancer reports 0 as the amount of many awarded bids (the agreed price is
+// private); 0 means "not shown", never a free bid.
+const amountOrNull = (v) => (num(v) && v > 0 ? v : null);
+
+function winnerData(winner, users, { myUid, totalBids, avgBid, ourBid }) {
+  return {
     freelancerBidId: winner.id || null,
     bidderId: winner.bidder_id || null,
     ...bidderFacts(users, winner.bidder_id),
-    amount: num(winner.amount),
+    amount: amountOrNull(winner.amount),
     period: num(winner.period),
     description: winner.sealed ? null : (winner.description || null),
     sealed: !!winner.sealed,
     highlighted: !!winner.highlighted,
     bidSubmittedAt: num(winner.time_submitted) ? new Date(winner.time_submitted * 1000) : null,
     isMine: !!myUid && Number(winner.bidder_id) === Number(myUid),
-    totalBids: bids.length || num(project.bidCount),
-    avgBid: amounts.length ? amounts.reduce((a, b) => a + b, 0) / amounts.length : null,
+    totalBids: num(totalBids),
+    avgBid: amountOrNull(avgBid),
     fetchedAt: new Date(),
+    ...(ourBid ? {
+      ourFreelancerBidId: ourBid.id || null,
+      ourAmount: amountOrNull(ourBid.amount),
+      ourPeriod: num(ourBid.period),
+      ourText: ourBid.description || null,
+      ourPlacedAt: num(ourBid.time_submitted) ? new Date(ourBid.time_submitted * 1000) : null,
+    } : {}),
   };
+}
+
+// Read the awarded bid on one project from Freelancer and store it (used by
+// the 30-minute outcome check for bids this app placed).
+async function captureWinningBid(client, { project, myUid }) {
+  const { bids, users } = await getAwardedBids(client, [project.freelancerProjectId]);
+  const winner = bids.find((b) => Number(b.bidder_id) === Number(myUid)) || bids[0];
+  if (!winner) return null;
+  const data = winnerData(winner, users, { myUid, totalBids: project.bidCount, avgBid: project.bidAvg });
   const row = await prisma.winningBid.upsert({ where: { projectId: project.id }, update: data, create: { projectId: project.id, ...data } });
-  logger.info(`Winning bid captured for project #${project.id}: ${data.amount} by ${data.bidderName || data.bidderId}${data.isMine ? ' (ours)' : ''}`);
+  logger.info(`Winning bid captured for project #${project.id}: ${data.amount ?? 'amount hidden'} by ${data.bidderName || data.bidderId}${data.isMine ? ' (ours)' : ''}`);
   return row;
 }
 
-// Projects we bid on that were decided but whose winner is not stored yet.
-// Looks at the most recent RECENT_BIDS bids only and reads up to `limit`
-// winners per call (one Freelancer request each); the rest wait for the next
-// click or the 30-minute outcome check.
-const RECENT_BIDS = 500;
-async function syncWinningBids(userId, { limit = 50 } = {}) {
+// Every project the account bid on in the last HISTORY_DAYS, read from
+// Freelancer itself, so bids placed by the desktop app or on the website count
+// too, not only the ones in this app's database. Decided (closed) projects get
+// their winner stored next to our bid; projects still open are left for a
+// later click.
+const HISTORY_DAYS = 180;
+const PROJECTS_PER_CALL = 50;
+const WINNERS_PER_CALL = 20;
+
+async function syncWinningBids(userId) {
   const token = await prisma.freelancerToken.findUnique({ where: { userId } });
   if (!token || isExpired(token.expiresAt)) { const e = new Error('Freelancer is not connected. Connect it in Settings.'); e.status = 400; throw e; }
   const client = createFreelancerClient(decrypt(token.accessToken));
   const myUid = Number(token.freelancerUid) || null;
-  // Decided bids among the most recent ones, then drop those whose winner is stored.
-  const recent = await prisma.bid.findMany({
-    where: { userId, awardStatus: { in: ['lost', 'awarded'] } },
-    orderBy: { id: 'desc' }, take: RECENT_BIDS,
-    select: { id: true, projectId: true, project: { select: { id: true, freelancerProjectId: true, bidCount: true } } },
-  });
-  const projectIds = [...new Set(recent.map((b) => b.projectId))];
-  const stored = new Set((await prisma.winningBid.findMany({ where: { projectId: { in: projectIds } }, select: { projectId: true } })).map((w) => w.projectId));
-  const pending = [];
-  const seen = new Set();
-  for (const b of recent) {
-    if (stored.has(b.projectId) || seen.has(b.projectId)) continue;
-    seen.add(b.projectId);
-    pending.push(b);
-  }
-  const batch = pending.slice(0, limit);
-  let captured = 0;
-  let noWinner = 0;
+  if (!myUid) { const e = new Error('The Freelancer user id is unknown. Reconnect Freelancer in Settings.'); e.status = 400; throw e; }
   const errors = [];
-  for (const b of batch) {
-    try {
-      if (await captureWinningBid(client, { project: b.project, myUid })) captured++; else noWinner++;
-    } catch (err) {
-      const status = err.response?.status;
-      const msg = `project #${b.project.freelancerProjectId}: HTTP ${status ?? 'NETWORK'} ${err.response?.data?.message || err.message}`;
-      logger.warn(`winningBids: ${msg}`);
-      errors.push(msg);
-      if (status === 401 || status === 403) break;
-      if (errors.length >= 5) break;
+  const fail = (what, err) => {
+    const msg = `${what}: HTTP ${err.response?.status ?? 'NETWORK'} ${err.response?.data?.message || err.message}`;
+    logger.warn(`winningBids: ${msg}`);
+    errors.push(msg);
+    return err.response?.status === 401 || err.response?.status === 403;
+  };
+
+  // 1. The account's bids, newest first; the latest bid per project.
+  const sinceSec = Math.floor(Date.now() / 1000) - HISTORY_DAYS * 86400;
+  let accountBids;
+  try { accountBids = await getAccountBids(client, myUid, { sinceSec }); } catch (err) { fail('reading your bids', err); return { bidsRead: 0, checked: 0, captured: 0, noWinner: 0, open: 0, errors }; }
+  const ourByProject = new Map();
+  for (const b of accountBids) {
+    const prev = ourByProject.get(b.project_id);
+    if (!prev || (b.time_submitted || 0) > (prev.time_submitted || 0)) ourByProject.set(b.project_id, b);
+  }
+
+  // 2. Skip projects whose winner is already stored.
+  const allIds = [...ourByProject.keys()];
+  const storedRows = await prisma.winningBid.findMany({
+    where: { project: { freelancerProjectId: { in: allIds } } },
+    select: { id: true, ourFreelancerBidId: true, project: { select: { freelancerProjectId: true } } },
+  });
+  const stored = new Set(storedRows.map((r) => r.project.freelancerProjectId));
+  // Rows stored before our own bid was kept next to the winner: fill it in.
+  for (const r of storedRows) {
+    const ours = ourByProject.get(r.project.freelancerProjectId);
+    if (ours && !r.ourFreelancerBidId) {
+      await prisma.winningBid.update({ where: { id: r.id }, data: {
+        ourFreelancerBidId: ours.id || null, ourAmount: amountOrNull(ours.amount), ourPeriod: num(ours.period),
+        ourText: ours.description || null, ourPlacedAt: num(ours.time_submitted) ? new Date(ours.time_submitted * 1000) : null,
+      } }).catch(() => {});
     }
   }
-  return { checked: batch.length, captured, noWinner, remaining: Math.max(0, pending.length - batch.length), errors };
+  // Closed projects already searched without a winner: closed is final.
+  // (One query over all checked projects, filtered here: an IN list of
+  // thousands of ids next to a NOT NULL filter exceeds SQLite's limits.)
+  const ourIds = new Set(allIds);
+  const checkedRows = await prisma.project.findMany({ where: { winnerCheckedAt: { not: null } }, select: { freelancerProjectId: true } });
+  const checkedBefore = new Set(checkedRows.map((r) => r.freelancerProjectId).filter((id) => ourIds.has(id) && !stored.has(id)));
+  const pendingIds = allIds.filter((id) => !stored.has(id) && !checkedBefore.has(id));
+
+  // 3. Current state of those projects; keep a local row for each one decided.
+  const decided = []; // { local, api }
+  let open = 0;
+  let stop = false;
+  for (let i = 0; i < pendingIds.length && !stop; i += PROJECTS_PER_CALL) {
+    const ids = pendingIds.slice(i, i + PROJECTS_PER_CALL);
+    let projects = [];
+    try {
+      const r = await client.get('/projects/0.1/projects/', { params: { 'projects[]': ids, limit: ids.length, job_details: true, owner_info: true } });
+      projects = r.data?.result?.projects || [];
+    } catch (err) { stop = fail(`reading ${ids.length} projects`, err); continue; }
+    for (const p of projects) {
+      if (p.status !== 'closed') { open++; continue; }
+      const ours = ourByProject.get(p.id);
+      const data = forPrisma(projectDataFromApi(p, {}));
+      const local = await prisma.project.upsert({
+        where: { freelancerProjectId: p.id },
+        update: { status: data.status, bidCount: data.bidCount, bidAvg: data.bidAvg, lastCheckedAt: new Date() },
+        // Filed under the time of our bid so old projects do not land on top of the Projects page.
+        create: { ...data, discoveredAt: ours?.time_submitted ? new Date(ours.time_submitted * 1000) : new Date() },
+      });
+      decided.push({ local, api: p });
+    }
+  }
+
+  // 4. The winner of each decided project, many projects per request.
+  let captured = 0;
+  let noWinner = 0;
+  for (let i = 0; i < decided.length && !stop; i += WINNERS_PER_CALL) {
+    const group = decided.slice(i, i + WINNERS_PER_CALL);
+    let res;
+    try { res = await getAwardedBids(client, group.map((g) => g.api.id)); } catch (err) { stop = fail(`reading winners of ${group.length} projects`, err); continue; }
+    await prisma.project.updateMany({ where: { id: { in: group.map((g) => g.local.id) } }, data: { winnerCheckedAt: new Date() } });
+    for (const { local, api } of group) {
+      const awarded = res.bids.filter((b) => b.project_id === api.id);
+      const winner = awarded.find((b) => Number(b.bidder_id) === myUid) || awarded[0];
+      if (!winner) { noWinner++; continue; }
+      const data = winnerData(winner, res.users, { myUid, totalBids: api.bid_stats?.bid_count, avgBid: api.bid_stats?.bid_avg, ourBid: ourByProject.get(api.id) });
+      await prisma.winningBid.upsert({ where: { projectId: local.id }, update: data, create: { projectId: local.id, ...data } });
+      captured++;
+    }
+  }
+  noWinner += checkedBefore.size;
+  logger.info(`winningBids: ${accountBids.length} account bids on ${allIds.length} projects; ${stored.size} winners already stored, ${captured} new, ${noWinner} closed without a winner, ${open} still open`);
+  return { bidsRead: accountBids.length, projects: allIds.length, alreadyStored: stored.size, checked: decided.length, captured, noWinner, open, errors };
 }
 
 // Rows for the Market page plus the headline numbers.
 async function winningBidRows(userId, period = '30d') {
   const days = PERIOD_DAYS[period] === undefined ? 30 : PERIOD_DAYS[period];
   const since = days ? new Date(Date.now() - days * 86400000) : null;
+  // Projects we bid on: through this app (a row in `bids`) or anywhere else
+  // (our bid read from the account's Freelancer history). The period is when
+  // the project was posted, not when its winner was fetched.
   const rows = await prisma.winningBid.findMany({
-    where: { ...(since ? { fetchedAt: { gte: since } } : {}), project: { bids: { some: { userId } } } },
-    orderBy: { fetchedAt: 'desc' }, take: 500,
+    where: {
+      OR: [{ project: { bids: { some: { userId } } } }, { ourFreelancerBidId: { not: null } }],
+      ...(since ? { project: { OR: [{ timeSubmitted: { gte: since } }, { timeSubmitted: null, discoveredAt: { gte: since } }] } } : {}),
+    },
+    orderBy: [{ project: { timeSubmitted: 'desc' } }, { fetchedAt: 'desc' }], take: 2000,
     include: {
       project: {
         select: {
@@ -118,7 +201,10 @@ async function winningBidRows(userId, period = '30d') {
     },
   });
   const items = rows.map((w) => {
-    const our = w.project.bids[0] || null;
+    const local = w.project.bids[0] || null;
+    const our = local ? { ...local, amount: local.amount || w.ourAmount, periodDays: local.periodDays || w.ourPeriod, proposalText: local.proposalText || w.ourText }
+      : w.ourFreelancerBidId ? { id: null, amount: w.ourAmount, periodDays: w.ourPeriod, status: 'placed', awardStatus: w.isMine ? 'awarded' : 'lost', proposalText: w.ourText, placedAt: w.ourPlacedAt, sealed: false, clientRepliedAt: null }
+      : null;
     const ratio = our?.amount > 0 && w.amount > 0 ? round1(w.amount / our.amount) : null;
     return {
       projectId: w.project.id, freelancerProjectId: w.project.freelancerProjectId, title: w.project.title,

@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { useBids } from '../hooks/useBids'
 import { useConfirm } from '../components/ConfirmDialog'
+import Pagination from '../components/Pagination'
+import { usePageParams } from '../hooks/usePageParams'
 import { timeAgo, formatAmount, formatBudget } from '../utils/formatters'
 
 // Time from the project being posted to the bid being placed: "50s",
@@ -26,7 +28,6 @@ function projectForPage(project) {
   return { ...project, jobNames }
 }
 
-const LIMIT = 20
 
 const _regionNames = new Intl.DisplayNames(['en'], { type: 'region' })
 
@@ -70,10 +71,11 @@ const STATUS_COLORS = {
 export default function BidsPage() {
   const { bids, totalCount, stats, idle, loading, error, fetchBids, fetchStats, retract, retry, placeNow, cancel, update } = useBids()
   const confirm = useConfirm()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   // Honor deep links like /bids?filter=converted (Dashboard stat cards)
   const [activeFilter, setActiveFilter] = useState(() => searchParams.get('filter') || 'all')
-  const [offset, setOffset] = useState(0)
+  // Page and page size live in the address (?page=3&size=20): a reload shows the same rows.
+  const { page, size, offset, setPage, setSize } = usePageParams()
   const [expandedBid, setExpandedBid] = useState(null)
   const navigate = useNavigate()
   const [retractingId, setRetractingId] = useState(null)
@@ -100,9 +102,9 @@ export default function BidsPage() {
   const searchDebounceRef = useRef(null)
   const searchRef = useRef('')
 
-  // Initial load
+  // Initial load: the page and filter in the address
   useEffect(() => {
-    fetchBids({ limit: LIMIT, offset: 0 })
+    fetchBids({ limit: size, offset, ...filterToParams(activeFilter, '') })
     fetchStats()
   }, [])
 
@@ -163,8 +165,8 @@ export default function BidsPage() {
     searchRef.current = value
     clearTimeout(searchDebounceRef.current)
     searchDebounceRef.current = setTimeout(() => {
-      setOffset(0)
-      fetchBids({ limit: LIMIT, offset: 0, ...filterToParams(activeFilter, value) })
+      setPage(0)
+      fetchBids({ limit: size, offset: 0, ...filterToParams(activeFilter, value) })
     }, 300)
   }
 
@@ -180,7 +182,7 @@ export default function BidsPage() {
 
       await Promise.all([
         fetchBids(
-          { limit: LIMIT, offset, ...filterToParams(activeFilter, searchRef.current) },
+          { limit: size, offset, ...filterToParams(activeFilter, searchRef.current) },
           { prependNew }
         ),
         fetchStats()
@@ -223,27 +225,32 @@ export default function BidsPage() {
       }
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [offset, activeFilter])
+  }, [offset, size, activeFilter])
 
   function handleFilterChange(filterKey) {
     setActiveFilter(filterKey)
-    setOffset(0)
+    // Filter in the address too (it was read from there on load), page back to 1.
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (filterKey === 'all') next.delete('filter'); else next.set('filter', filterKey)
+      next.delete('page')
+      return next
+    }, { replace: true })
     // A filter switch surfaces different rows — they are not "new bids", so
     // don't greet them with the green pulse animation.
     isInitialLoadRef.current = true
-    fetchBids({ limit: LIMIT, offset: 0, ...filterToParams(filterKey, search) })
+    fetchBids({ limit: size, offset: 0, ...filterToParams(filterKey, search) })
   }
 
-  function handlePrev() {
-    const newOffset = Math.max(0, offset - LIMIT)
-    setOffset(newOffset)
-    fetchBids({ limit: LIMIT, offset: newOffset, ...filterToParams(activeFilter, search) })
+  function handlePage(p) {
+    setPage(p)
+    fetchBids({ limit: size, offset: p * size, ...filterToParams(activeFilter, search) })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  function handleNext() {
-    const newOffset = offset + LIMIT
-    setOffset(newOffset)
-    fetchBids({ limit: LIMIT, offset: newOffset, ...filterToParams(activeFilter, search) })
+  function handlePageSize(s) {
+    setSize(s)
+    fetchBids({ limit: s, offset: 0, ...filterToParams(activeFilter, search) })
   }
 
   async function handleRetract(bid) {
@@ -925,27 +932,7 @@ export default function BidsPage() {
           </div>
 
             {/* Pagination */}
-            <div className="flex items-center justify-between pt-2">
-              <p className="text-sm text-slate-700 dark:text-slate-400">
-                Showing {offset + 1}–{Math.min(offset + LIMIT, totalCount)} of {totalCount}
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={handlePrev}
-                  disabled={offset === 0}
-                  className="px-3.5 py-2 text-sm font-medium bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg hover:bg-slate-50 dark:hover:bg-navy-800 transition-colors disabled:opacity-40"
-                >
-                  Previous
-                </button>
-                <button
-                  onClick={handleNext}
-                  disabled={offset + LIMIT >= totalCount}
-                  className="px-3.5 py-2 text-sm font-medium bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg hover:bg-slate-50 dark:hover:bg-navy-800 transition-colors disabled:opacity-40"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
+            <Pagination page={page} pageSize={size} total={totalCount} onPage={handlePage} onPageSize={handlePageSize} className="pt-2" />
           </div>
         </>
       )}

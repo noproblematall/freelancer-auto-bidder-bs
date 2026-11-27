@@ -46,6 +46,20 @@ function ownerFacts(p, ownerUser) {
   };
 }
 
+// Freelancer keeps clients anonymous before an award: no owner id anywhere,
+// neither in the API nor on the website. What it does send for every project
+// is the owner's registration time (to the second), country and city, which
+// together single out one account. This key groups a client's projects for
+// the Market page's Top clients. Format: "<registered unix s>-<cc>-<city>";
+// keep it in step with the backfill in migration 20261127030000_project_owner_key.
+function ownerKeyOf(p) {
+  const info = p.owner_info || {};
+  const reg = typeof info.registration_date === 'number' && info.registration_date > 0 ? Math.floor(info.registration_date) : null;
+  if (!reg) return p.owner_id ? `id${p.owner_id}` : null;
+  const cc = info.country?.code ? String(info.country.code).toLowerCase() : '';
+  return `${reg}-${cc}-${String(info.city || '').trim()}`;
+}
+
 function projectDataFromApi(p, users = {}) {
   const ownerUser = p.owner_id ? users[String(p.owner_id)] : null;
   const ownerCountry = resolveCountry(p, ownerUser);
@@ -67,6 +81,7 @@ function projectDataFromApi(p, users = {}) {
     language: p.language ? String(p.language).toLowerCase() : null,
     jobIds: p.jobs ? JSON.stringify(p.jobs.map(j => ({ id: j.id, name: j.name }))) : null,
     ownerId: p.owner_id ?? null,
+    ownerKey: ownerKeyOf(p),
     ownerCountry,
     ownerLocation: ownerLocationObj ? JSON.stringify(ownerLocationObj) : null,
     bidCount,

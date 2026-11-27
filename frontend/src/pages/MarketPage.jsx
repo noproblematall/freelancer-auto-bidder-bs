@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Fragment } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { timeAgo, formatAmount, formatBudget } from '../utils/formatters'
+import Pagination from '../components/Pagination'
+import { usePageParams } from '../hooks/usePageParams'
 import {
   getWinningBids, syncWinningBids, getWinningBidStudy, runWinningBidStudy,
   getTopClients, getClientHistory, getClientProjectBids, getClientStudy, runClientStudy,
@@ -84,8 +86,19 @@ function WinningBidStudy({ report, createdAt, model }) {
   )
 }
 
+const PERIODS = ['30d', '90d', '180d', 'all']
+
 function WinningBidsTab() {
-  const [period, setPeriod] = useState('30d')
+  // Period, page and page size live in the address: a reload shows the same rows.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const period = PERIODS.includes(searchParams.get('period')) ? searchParams.get('period') : '30d'
+  const { page, size, setPage, setSize } = usePageParams()
+  const setPeriod = (p) => setSearchParams((prev) => {
+    const next = new URLSearchParams(prev)
+    if (p === '30d') next.delete('period'); else next.set('period', p)
+    next.delete('page')
+    return next
+  }, { replace: true })
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -98,8 +111,10 @@ function WinningBidsTab() {
 
   const load = useCallback(async (p) => {
     setLoading(true); setError(null)
-    try { setData(await getWinningBids(p)) } catch (e) { setError(errText(e)) } finally { setLoading(false) }
+    try { setData(await getWinningBids(p)); setOpen(null) } catch (e) { setError(errText(e)) } finally { setLoading(false) }
   }, [])
+  const goToPage = (p) => { setPage(p); setOpen(null) }
+  const changeSize = (s) => { setSize(s); setOpen(null) }
   useEffect(() => { load(period) }, [period, load])
   useEffect(() => { getWinningBidStudy().then(setStudy).catch(() => {}) }, [])
 
@@ -107,10 +122,10 @@ function WinningBidsTab() {
     setSyncing(true); setSyncMsg(null)
     try {
       const r = await syncWinningBids()
-      const parts = [`${r.captured} winning bid${r.captured === 1 ? '' : 's'} fetched from ${r.checked} decided project${r.checked === 1 ? '' : 's'}`]
-      if (r.noWinner) parts.push(`${r.noWinner} without a visible winner`)
-      if (r.remaining) parts.push(`${r.remaining} more to fetch — click again`)
-      if (r.checked === 0 && !r.remaining) parts.push('nothing new: every decided project among your last 500 bids already has its winner, or none is decided yet')
+      const parts = [`${r.bidsRead} of your Freelancer bids read (last 180 days, ${r.projects} projects)`, `${r.captured} new winner${r.captured === 1 ? '' : 's'}`]
+      if (r.alreadyStored) parts.push(`${r.alreadyStored} already stored`)
+      if (r.noWinner) parts.push(`${r.noWinner} closed without a visible winner`)
+      if (r.open) parts.push(`${r.open} still open`)
       const failed = r.errors?.length ? ` · ${r.errors.length} failed: ${r.errors[0]}` : ''
       setSyncMsg({ text: parts.join(' · ') + failed, error: !!r.errors?.length && r.captured === 0 })
       await load(period)
@@ -134,7 +149,7 @@ function WinningBidsTab() {
           <button onClick={handleStudy} disabled={studying || syncing} className={BTN_PRIMARY}>{studying ? <Spinner /> : '✦'}{studying ? 'Studying…' : 'AI: what wins'}</button>
         </div>
       </div>
-      {syncing && <p className="text-xs text-slate-600 dark:text-slate-300 inline-flex items-center gap-2"><Spinner /> Reading the bids on each decided project from Freelancer (one request per project, up to 50 per click)…</p>}
+      {syncing && <p className="text-xs text-slate-600 dark:text-slate-300 inline-flex items-center gap-2"><Spinner /> Reading your bids and the winners of closed projects from Freelancer…</p>}
       {syncMsg && !syncing && <p className={`text-xs ${syncMsg.error ? 'text-red-600 dark:text-red-400 font-medium' : 'text-slate-600 dark:text-slate-300'}`}>{syncMsg.text}</p>}
       {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 text-sm text-red-700 dark:text-red-300">{error}</div>}
 
@@ -161,7 +176,7 @@ function WinningBidsTab() {
       <section className={`${CARD} overflow-hidden`}>
         {loading ? <p className="p-5 text-sm text-slate-500">Loading…</p> : !data?.items?.length ? (
           <div className="p-6 text-sm text-slate-600 dark:text-slate-300">
-            No winning bids stored yet. They appear once a project you bid on is awarded (the outcome check runs every 30 minutes); click <b>Fetch winning bids</b> to read them now for projects already marked lost or won on the <Link to="/bids" className="underline">Bid History</Link> page.
+            No winning bids in this period yet. Click <b>Fetch winning bids</b> to read every project you bid on in the last 180 days from Freelancer (including bids placed outside this app) and the bid that won each closed one.
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -176,9 +191,9 @@ function WinningBidsTab() {
               </tr>
             </thead>
             <tbody>
-              {data.items.map((i) => (
-                <>
-                  <tr key={i.projectId} className="border-t border-slate-100 dark:border-white/5 hover:bg-slate-50/60 dark:hover:bg-white/[0.02] cursor-pointer" onClick={() => setOpen(open === i.projectId ? null : i.projectId)}>
+              {data.items.slice(page * size, (page + 1) * size).map((i) => (
+                <Fragment key={i.projectId}>
+                  <tr className="border-t border-slate-100 dark:border-white/5 hover:bg-slate-50/60 dark:hover:bg-white/[0.02] cursor-pointer" onClick={() => setOpen(open === i.projectId ? null : i.projectId)}>
                     <td className="px-4 py-2.5">
                       <p className="font-medium text-navy-950 dark:text-white truncate max-w-md">{i.title}</p>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400">{formatBudget(i.budgetMin, i.budgetMax, i.currency)} · {flag(i.clientCountry)} {i.clientCountry || ''} · {i.postedAt ? `posted ${timeAgo(i.postedAt)}` : ''}{i.relevanceScore != null ? ` · match ${i.relevanceScore}%` : ''}</p>
@@ -200,7 +215,7 @@ function WinningBidsTab() {
                     <td className="px-2 py-2.5 text-slate-400">{open === i.projectId ? '▴' : '▾'}</td>
                   </tr>
                   {open === i.projectId && (
-                    <tr key={`${i.projectId}-open`} className="bg-slate-50/70 dark:bg-navy-900/40">
+                    <tr className="bg-slate-50/70 dark:bg-navy-900/40">
                       <td colSpan={6} className="px-4 py-3">
                         <div className="grid md:grid-cols-2 gap-4 text-sm">
                           <div>
@@ -216,10 +231,13 @@ function WinningBidsTab() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>
+        )}
+        {!loading && data?.items?.length > 0 && (
+          <Pagination page={page} pageSize={size} total={data.items.length} onPage={goToPage} onPageSize={changeSize} className="px-4 py-3 border-t border-slate-100 dark:border-white/5" />
         )}
       </section>
     </div>
@@ -361,7 +379,16 @@ function ClientDetail({ client, onClose }) {
 }
 
 function ClientsTab() {
-  const [period, setPeriod] = useState('30d')
+  // Period, page and page size live in the address: a reload shows the same rows.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const period = PERIODS.includes(searchParams.get('period')) ? searchParams.get('period') : '30d'
+  const { page, size, setPage, setSize } = usePageParams()
+  const setPeriod = (p) => setSearchParams((prev) => {
+    const next = new URLSearchParams(prev)
+    if (p === '30d') next.delete('period'); else next.set('period', p)
+    next.delete('page')
+    return next
+  }, { replace: true })
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -397,7 +424,7 @@ function ClientsTab() {
               </tr>
             </thead>
             <tbody>
-              {data.clients.map((c) => (
+              {data.clients.slice(page * size, (page + 1) * size).map((c) => (
                 <tr key={c.ownerId} className={`border-t border-slate-100 dark:border-white/5 ${selected?.ownerId === c.ownerId ? 'bg-emerald-50/50 dark:bg-emerald-900/10' : ''}`}>
                   <td className="px-4 py-2.5">
                     <p className="font-medium text-navy-950 dark:text-white">{flag(c.country)} {c.name || c.username || `Client #${c.ownerId}`}</p>
@@ -412,6 +439,9 @@ function ClientsTab() {
               ))}
             </tbody>
           </table>
+        )}
+        {!loading && data?.clients?.length > 0 && (
+          <Pagination page={page} pageSize={size} total={data.clients.length} onPage={setPage} onPageSize={setSize} className="px-4 py-3 border-t border-slate-100 dark:border-white/5" />
         )}
       </section>
     </div>

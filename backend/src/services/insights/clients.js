@@ -3,8 +3,7 @@
 // Freelancer), and an AI study of how to win with each one.
 const prisma = require('../../config/database');
 const { createFreelancerClient } = require('../freelancer/client');
-const { getProjectsByOwner, getEmployer } = require('../freelancer/projects');
-const { getProjectBids } = require('../freelancer/bids');
+const { getProjectBids, getAwardedBids } = require('../freelancer/bids');
 const { decrypt, isExpired } = require('../../utils/tokenManager');
 const { askJson, saveReport, latestReport } = require('./ai');
 const logger = require('../../utils/logger');
@@ -21,42 +20,60 @@ async function flClientFor(userId) {
   return { client: createFreelancerClient(decrypt(token.accessToken)), myUid: Number(token.freelancerUid) || null };
 }
 
+const cityOf = (ownerLocation) => { try { return JSON.parse(ownerLocation || 'null')?.city || null; } catch { return null; } };
+
 // Employers ranked from the projects table: quality (client score, hire
-// history, rating) first, then how much we have seen of them.
+// history, rating) first, then how much we have seen of them. Freelancer hides
+// who the client is, so projects are grouped by the anonymous owner key
+// (registration time + country + city, see projectMapper.js); `ownerId` in
+// the rows is that key.
 async function topClients(userId, { period = '30d', limit = 40 } = {}) {
   const days = { '30d': 30, '90d': 90, '180d': 180, all: null }[period] ?? 30;
   const since = days ? new Date(Date.now() - days * 86400000) : null;
   const projects = await prisma.project.findMany({
-    where: { ownerId: { not: null }, ...(since ? { discoveredAt: { gte: since } } : {}) },
+    where: { ownerKey: { not: null }, ...(since ? { discoveredAt: { gte: since } } : {}) },
     select: {
-      ownerId: true, ownerName: true, ownerUsername: true, ownerCountry: true, ownerPaymentVerified: true, ownerDepositMade: true, ownerReviews: true, ownerRating: true,
+      ownerKey: true, ownerName: true, ownerUsername: true, ownerCountry: true, ownerLocation: true, ownerPaymentVerified: true, ownerDepositMade: true, ownerReviews: true, ownerRating: true,
       ownerProjectsComplete: true, ownerProjectsAll: true, ownerRegisteredAt: true, clientScore: true, discoveredAt: true, budgetMax: true, currency: true, title: true, jobIds: true,
       bids: { where: { userId }, select: { status: true, awardStatus: true, clientRepliedAt: true } },
+      winningBid: { select: { isMine: true, ourFreelancerBidId: true } },
     },
   });
   const byOwner = new Map();
   for (const p of projects) {
-    const o = byOwner.get(p.ownerId) || { ownerId: p.ownerId, name: null, username: null, country: null, paymentVerified: null, depositMade: null, reviews: null, rating: null, projectsComplete: null, projectsAll: null, registeredAt: null, clientScore: null, seen: 0, bids: 0, replied: 0, won: 0, lastSeen: null, budgets: [], skills: new Map(), titles: [] };
+    const o = byOwner.get(p.ownerKey) || { ownerId: p.ownerKey, name: null, username: null, city: null, country: null, paymentVerified: null, depositMade: null, reviews: null, rating: null, projectsComplete: null, projectsAll: null, registeredAt: null, clientScore: null, seen: 0, bids: 0, replied: 0, won: 0, lastSeen: null, budgets: [], skills: new Map(), titles: [] };
     o.seen++;
     if (p.ownerName) o.name = p.ownerName;
     if (p.ownerUsername) o.username = p.ownerUsername;
     if (p.ownerCountry) o.country = p.ownerCountry;
+    const city = cityOf(p.ownerLocation);
+    if (city) o.city = city;
+    // Facts from the newest project win: reviews and hire counts only grow.
+    const newest = !o.lastSeen || p.discoveredAt >= o.lastSeen;
     for (const k of ['paymentVerified', 'depositMade', 'reviews', 'rating', 'projectsComplete', 'projectsAll', 'registeredAt']) {
       const v = p[`owner${k[0].toUpperCase()}${k.slice(1)}`];
-      if (v !== null && v !== undefined) o[k] = v;
+      if (v !== null && v !== undefined && (newest || o[k] === null)) o[k] = v;
     }
     if (p.clientScore !== null) o.clientScore = Math.max(o.clientScore ?? 0, p.clientScore);
-    if (!o.lastSeen || p.discoveredAt > o.lastSeen) o.lastSeen = p.discoveredAt;
+    if (newest) o.lastSeen = p.discoveredAt;
     if (p.budgetMax && p.currency === 'USD') o.budgets.push(p.budgetMax);
     if (o.titles.length < 3) o.titles.push(p.title);
     try { for (const j of JSON.parse(p.jobIds || '[]')) { const n = typeof j === 'object' ? j.name : null; if (n) o.skills.set(n, (o.skills.get(n) || 0) + 1); } } catch { /* ignore */ }
-    for (const b of p.bids) {
+    // Our bids: placed through this app, or read from the Freelancer bid
+    // history by the Market page's winner sync (bids from the desktop app too).
+    if (p.bids.length) {
+      for (const b of p.bids) {
+        o.bids++;
+        if (b.clientRepliedAt || b.status === 'converted') o.replied++;
+        if (b.awardStatus === 'awarded') o.won++;
+      }
+    } else if (p.winningBid?.ourFreelancerBidId) {
       o.bids++;
-      if (b.clientRepliedAt || b.status === 'converted') o.replied++;
-      if (b.awardStatus === 'awarded') o.won++;
+      if (p.winningBid.isMine) o.won++;
     }
-    byOwner.set(p.ownerId, o);
+    byOwner.set(p.ownerKey, o);
   }
+  for (const o of byOwner.values()) if (!o.name && !o.username) o.name = o.city ? `Client in ${o.city}` : 'Anonymous client';
   const rows = [...byOwner.values()].map((o) => ({
     ...o,
     budgets: undefined, skills: [...o.skills.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name]) => name),
@@ -67,45 +84,71 @@ async function topClients(userId, { period = '30d', limit = 40 } = {}) {
   return { period, clients: rows.slice(0, limit), total: rows.length };
 }
 
-function mapHistoryProject(p, ourBids, myUid) {
-  const selected = Array.isArray(p.selected_bids) ? p.selected_bids : [];
-  const win = selected[0] || null;
-  const local = ourBids.get(p.id) || null;
-  return {
-    freelancerProjectId: p.id, title: p.title, status: p.status, frontendStatus: p.frontend_project_status || null,
-    type: p.type, currency: p.currency?.code || 'USD', budgetMin: p.budget?.minimum ?? null, budgetMax: p.budget?.maximum ?? null,
-    bidCount: p.bid_stats?.bid_count ?? null, bidAvg: num(p.bid_stats?.bid_avg), postedAt: p.time_submitted ? new Date(p.time_submitted * 1000) : null,
-    skills: Array.isArray(p.jobs) ? p.jobs.map((j) => j.name).filter(Boolean) : [],
-    awarded: win ? { bidderId: win.bidder_id, amount: num(win.amount), period: num(win.period), isMine: !!myUid && Number(win.bidder_id) === Number(myUid), awardedAt: num(win.time_awarded) ? new Date(win.time_awarded * 1000) : null } : null,
-    ourBid: local ? { id: local.id, amount: local.amount, status: local.status, awardStatus: local.awardStatus } : null,
-    url: `https://www.freelancer.com/projects/${p.id}`,
-  };
-}
-
-// Live: the employer's profile and their posted projects, newest first.
-async function clientHistory(userId, ownerId) {
+// The client's projects BidPilot has seen (grouped by the anonymous owner key;
+// Freelancer no longer lists a client's projects by owner), newest first, with
+// their current state and winner read live from Freelancer.
+async function clientHistory(userId, ownerKey) {
   const { client, myUid } = await flClientFor(userId);
-  return cached(`history:${userId}:${ownerId}`, async () => {
-    const [employer, hist] = await Promise.all([
-      getEmployer(client, ownerId).catch((e) => { logger.warn(`client explorer: employer ${ownerId} not read: ${e.message}`); return null; }),
-      getProjectsByOwner(client, ownerId, { limit: 40 }),
-    ]);
-    const ids = hist.projects.map((p) => p.id);
-    const local = await prisma.project.findMany({ where: { freelancerProjectId: { in: ids } }, select: { freelancerProjectId: true, bids: { where: { userId }, orderBy: { id: 'desc' }, take: 1, select: { id: true, amount: true, status: true, awardStatus: true } } } });
-    const ourBids = new Map(local.filter((l) => l.bids[0]).map((l) => [l.freelancerProjectId, l.bids[0]]));
-    const rep = employer?.employer_reputation?.entire_history || {};
-    const projects = hist.projects.map((p) => mapHistoryProject(p, ourBids, myUid));
+  return cached(`history:${userId}:${ownerKey}`, async () => {
+    const rows = await prisma.project.findMany({
+      where: { ownerKey },
+      orderBy: [{ timeSubmitted: 'desc' }, { discoveredAt: 'desc' }],
+      take: 40,
+      include: {
+        winningBid: true,
+        bids: { where: { userId }, orderBy: { id: 'desc' }, take: 1, select: { id: true, amount: true, status: true, awardStatus: true } },
+      },
+    });
+    if (!rows.length) { const e = new Error('No projects stored for this client.'); e.status = 404; throw e; }
+
+    // Live state of those projects and the winners of the closed ones.
+    const ids = rows.map((r) => r.freelancerProjectId);
+    const live = new Map();
+    const winners = new Map();
+    try {
+      const r = await client.get('/projects/0.1/projects/', { params: { 'projects[]': ids, limit: ids.length, job_details: true } });
+      for (const p of r.data?.result?.projects || []) live.set(p.id, p);
+      const closed = [...live.values()].filter((p) => p.status === 'closed').map((p) => p.id);
+      for (let i = 0; i < closed.length; i += 20) {
+        const { bids } = await getAwardedBids(client, closed.slice(i, i + 20));
+        for (const b of bids) if (!winners.has(b.project_id) || Number(b.bidder_id) === myUid) winners.set(b.project_id, b);
+      }
+    } catch (err) {
+      logger.warn(`client explorer: live state of ${ids.length} projects not read: ${err.message}`);
+    }
+
+    const projects = rows.map((r) => {
+      const p = live.get(r.freelancerProjectId) || {};
+      const w = winners.get(r.freelancerProjectId);
+      const stored = r.winningBid;
+      const awarded = w
+        ? { bidderId: w.bidder_id, amount: num(w.amount) || null, period: num(w.period), isMine: !!myUid && Number(w.bidder_id) === myUid, awardedAt: num(w.time_awarded) ? new Date(w.time_awarded * 1000) : null }
+        : stored ? { bidderId: stored.bidderId, amount: stored.amount, period: stored.period, isMine: stored.isMine, awardedAt: null } : null;
+      const local = r.bids[0];
+      const ourBid = local ? { id: local.id, amount: local.amount, status: local.status, awardStatus: local.awardStatus }
+        : stored?.ourFreelancerBidId ? { id: null, amount: stored.ourAmount, status: 'placed', awardStatus: stored.isMine ? 'awarded' : 'lost' } : null;
+      let skills = [];
+      try { skills = JSON.parse(r.jobIds || '[]').map((j) => (typeof j === 'object' ? j.name : null)).filter(Boolean); } catch { /* ignore */ }
+      return {
+        freelancerProjectId: r.freelancerProjectId, title: r.title, status: p.status || r.status, frontendStatus: p.frontend_project_status || null,
+        type: r.projectType, currency: r.currency, budgetMin: r.budgetMin, budgetMax: r.budgetMax,
+        bidCount: p.bid_stats?.bid_count ?? r.bidCount, bidAvg: num(p.bid_stats?.bid_avg) ?? r.bidAvg, postedAt: r.timeSubmitted,
+        skills, awarded, ourBid, url: `https://www.freelancer.com/projects/${r.freelancerProjectId}`,
+      };
+    });
     const awarded = projects.filter((p) => p.awarded);
+    const latest = rows[0];
+    const city = rows.map((r) => cityOf(r.ownerLocation)).find(Boolean) || null;
     return {
-      ownerId,
-      employer: employer ? {
-        name: employer.display_name || employer.public_name || null, username: employer.username || null, avatar: employer.avatar_cdn || employer.avatar || null,
-        country: employer.location?.country?.code || null, city: employer.location?.city || null, registeredAt: num(employer.registration_date) ? new Date(employer.registration_date * 1000) : null,
-        paymentVerified: !!employer.status?.payment_verified, depositMade: !!employer.status?.deposit_made, identityVerified: !!employer.status?.identity_verified,
-        rating: num(rep.overall), reviews: num(rep.reviews), projectsAll: num(rep.all), projectsComplete: num(rep.complete), onBudget: num(rep.on_budget), onTime: num(rep.on_time), earnings: num(rep.earnings),
-        url: employer.username ? `https://www.freelancer.com/u/${employer.username}` : null,
-      } : null,
-      totalProjects: hist.totalCount,
+      ownerId: ownerKey,
+      employer: {
+        name: city ? `Client in ${city}` : 'Anonymous client', username: null, avatar: null,
+        country: latest.ownerCountry, city, registeredAt: latest.ownerRegisteredAt,
+        paymentVerified: !!latest.ownerPaymentVerified, depositMade: !!latest.ownerDepositMade, identityVerified: false,
+        rating: latest.ownerReviews ? latest.ownerRating : null, reviews: latest.ownerReviews, projectsAll: latest.ownerProjectsAll, projectsComplete: latest.ownerProjectsComplete,
+        onBudget: null, onTime: null, earnings: null, url: null,
+      },
+      totalProjects: latest.ownerProjectsAll,
       projects,
       summary: {
         posted: projects.length, awarded: awarded.length, hireRate: projects.length ? Math.round((awarded.length / projects.length) * 100) : null,

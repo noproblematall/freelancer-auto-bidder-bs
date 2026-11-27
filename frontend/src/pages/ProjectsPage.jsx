@@ -5,8 +5,11 @@ import { useProjects } from '../hooks/useProjects'
 import { timeAgo, formatBudget, formatAmount } from '../utils/formatters'
 import { decisionLabel, decisionTone, decisionDetail } from '../utils/decisions'
 import api from '../services/api'
+import Pagination from '../components/Pagination'
+import { usePageParams } from '../hooks/usePageParams'
 
-const LIMIT = 20
+// How many projects the Search button asks Freelancer for (not the page size).
+const SEARCH_LIMIT = 20
 
 const _regionNames = new Intl.DisplayNames(['en'], { type: 'region' })
 
@@ -141,16 +144,18 @@ export default function ProjectsPage() {
   const [maxBudget, setMaxBudget] = useState(saved.maxBudget || '')
   const [projectType, setProjectType] = useState(saved.projectType || 'both')
   const [sortBy, setSortBy] = useState(saved.sortBy || 'discoveredAt')
-  const [offset, setOffset] = useState(Number.isInteger(saved.offset) ? saved.offset : 0)
+  // Page and page size live in the address (?page=3&size=20): a reload, or
+  // coming back from a project's page, shows the same rows.
+  const { page, size, offset, setPage, setSize } = usePageParams()
   const firstRun = useRef(true)
   const pendingScroll = useRef(Number.isFinite(saved.scrollY) ? saved.scrollY : null)
 
   useEffect(() => {
     try {
       const prev = readListState()
-      sessionStorage.setItem(LIST_STATE_KEY, JSON.stringify({ ...prev, query, minBudget, maxBudget, projectType, sortBy, offset }))
+      sessionStorage.setItem(LIST_STATE_KEY, JSON.stringify({ ...prev, query, minBudget, maxBudget, projectType, sortBy }))
     } catch { /* private mode: the list just starts from the top */ }
-  }, [query, minBudget, maxBudget, projectType, sortBy, offset])
+  }, [query, minBudget, maxBudget, projectType, sortBy])
 
   // Back from a project's page: return to where the list was scrolled.
   useEffect(() => {
@@ -189,8 +194,8 @@ export default function ProjectsPage() {
   }, [])
 
   // Build local DB query params from current filter state
-  function buildLocalParams(overrideOffset) {
-    const params = { limit: LIMIT, offset: overrideOffset ?? offset, sortBy, sortOrder: 'desc' }
+  function buildLocalParams(overrideOffset, overrideSize) {
+    const params = { limit: overrideSize ?? size, offset: overrideOffset ?? offset, sortBy, sortOrder: 'desc' }
     if (query.trim()) params.search = query.trim()
     if (projectType !== 'both') params.projectType = projectType
     if (minBudget) params.minBudget = minBudget
@@ -206,14 +211,14 @@ export default function ProjectsPage() {
   // Auto-refresh from local DB when sort/filter changes
   useEffect(() => {
     if (firstRun.current) { firstRun.current = false; return }
-    setOffset(0)
+    setPage(0)
     fetchProjects(buildLocalParams(0))
   }, [sortBy, projectType])
 
   function handleSearch(e) {
     e.preventDefault()
-    setOffset(0)
-    const filters = { query: query.trim(), limit: LIMIT, offset: 0 }
+    setPage(0)
+    const filters = { query: query.trim(), limit: SEARCH_LIMIT, offset: 0 }
     if (minBudget) filters.minBudget = parseFloat(minBudget)
     if (maxBudget) filters.maxBudget = parseFloat(maxBudget)
     if (projectType !== 'both') filters.projectTypes = [projectType]
@@ -224,16 +229,15 @@ export default function ProjectsPage() {
       .catch(() => {})
   }
 
-  function handlePrev() {
-    const newOffset = Math.max(0, offset - LIMIT)
-    setOffset(newOffset)
-    fetchProjects(buildLocalParams(newOffset))
+  function handlePage(p) {
+    setPage(p)
+    fetchProjects(buildLocalParams(p * size))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  function handleNext() {
-    const newOffset = offset + LIMIT
-    setOffset(newOffset)
-    fetchProjects(buildLocalParams(newOffset))
+  function handlePageSize(s) {
+    setSize(s)
+    fetchProjects(buildLocalParams(0, s))
   }
 
   // Not connected state
@@ -510,27 +514,7 @@ export default function ProjectsPage() {
           </div>
 
           {/* Pagination */}
-          <div className="flex items-center justify-between pt-2">
-            <p className="text-sm text-slate-700 dark:text-slate-400">
-              Showing {offset + 1}–{Math.min(offset + LIMIT, totalCount)} of {totalCount}
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={handlePrev}
-                disabled={offset === 0}
-                className="px-3.5 py-2 text-sm font-medium bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg hover:bg-slate-50 dark:hover:bg-navy-800 transition-colors disabled:opacity-40"
-              >
-                Previous
-              </button>
-              <button
-                onClick={handleNext}
-                disabled={offset + LIMIT >= totalCount}
-                className="px-3.5 py-2 text-sm font-medium bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg hover:bg-slate-50 dark:hover:bg-navy-800 transition-colors disabled:opacity-40"
-              >
-                Next
-              </button>
-            </div>
-          </div>
+          <Pagination page={page} pageSize={size} total={totalCount} onPage={handlePage} onPageSize={handlePageSize} className="pt-2" />
         </>
       )}
 
