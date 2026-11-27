@@ -58,9 +58,6 @@ export default function SettingsPage() {
   const [bidDelayMessage, setBidDelayMessage] = useState(null)
   // Client-quality gate, follow-ups, automatic replies, monthly AI review
   const [maxProjectBids, setMaxProjectBids] = useState(user?.maxProjectBids ?? 200)
-  const [followUpEnabled, setFollowUpEnabled] = useState(user?.followUpEnabled ?? true)
-  const [followUpHours, setFollowUpHours] = useState(user?.followUpHours ?? 24)
-  const [followUpMinScore, setFollowUpMinScore] = useState(user?.followUpMinScore ?? 85)
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(user?.autoReplyEnabled || false)
   const [aiReviewAuto, setAiReviewAuto] = useState(user?.aiReviewAuto ?? true)
   const [winningMessage, setWinningMessage] = useState(null)
@@ -264,9 +261,6 @@ export default function SettingsPage() {
       setSealBids(user.sealBids)
     }
     if (user?.maxProjectBids !== undefined) setMaxProjectBids(user.maxProjectBids ?? 200)
-    if (user?.followUpEnabled !== undefined) setFollowUpEnabled(!!user.followUpEnabled)
-    if (user?.followUpHours !== undefined) setFollowUpHours(user.followUpHours ?? 24)
-    if (user?.followUpMinScore !== undefined) setFollowUpMinScore(user.followUpMinScore ?? 85)
     if (user?.autoReplyEnabled !== undefined) setAutoReplyEnabled(!!user.autoReplyEnabled)
     if (user?.aiReviewAuto !== undefined) setAiReviewAuto(user.aiReviewAuto !== false)
     if (user?.maxBidsPerHour !== undefined) setMaxBidsPerHour(user.maxBidsPerHour)
@@ -1857,7 +1851,7 @@ export default function SettingsPage() {
                 <div>
                   <p className="text-sm font-medium text-navy-950 dark:text-white">Winning more</p>
                   <p className="text-xs text-slate-700 dark:text-slate-200 mt-1">
-                    Skip crowded projects, keep the conversation going after a bid, and let the AI review re-check the numbers monthly. Results show on the Analytics page.
+                    Skip crowded projects, reply to the client's first message, and let the AI review re-check the numbers monthly. Results show on the Analytics page.
                     {winningMessage && (
                       <span className={`ml-2 font-medium ${winningMessage.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>{winningMessage.text}</span>
                     )}
@@ -1876,30 +1870,6 @@ export default function SettingsPage() {
                     />
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Projects with more bids than this are skipped before any OpenAI call. 0 = no cap.</p>
                   </div>
-                </div>
-
-                <div className="flex items-start justify-between gap-4 pt-3 border-t border-slate-200 dark:border-white/8">
-                  <div className="flex-1">
-                    <label htmlFor="follow-up" className="block text-sm font-medium text-navy-950 dark:text-white">Follow up on unanswered bids</label>
-                    <p className="text-xs text-slate-700 dark:text-slate-200 mt-1">
-                      One short message to the client, written by your OpenAI model from the brief and your bid, when a high-scoring bid has had no reply. At most five an hour; never twice on the same bid.
-                    </p>
-                    {followUpEnabled && (
-                      <div className="grid grid-cols-2 gap-4 mt-3 max-w-sm">
-                        <div>
-                          <label htmlFor="follow-up-hours" className="block text-xs font-medium text-slate-700 dark:text-slate-200 mb-1.5">After (hours)</label>
-                          <input id="follow-up-hours" type="number" min="1" max="72" value={followUpHours} onChange={(e) => setFollowUpHours(e.target.value)} onBlur={(e) => saveWinningNumber('followUpHours', e.target.value, 1, 72, setFollowUpHours)} className="w-full px-3 py-2 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500/20 focus:border-navy-500 transition-colors" />
-                        </div>
-                        <div>
-                          <label htmlFor="follow-up-score" className="block text-xs font-medium text-slate-700 dark:text-slate-200 mb-1.5">Only if relevance ≥</label>
-                          <input id="follow-up-score" type="number" min="0" max="100" value={followUpMinScore} onChange={(e) => setFollowUpMinScore(e.target.value)} onBlur={(e) => saveWinningNumber('followUpMinScore', e.target.value, 0, 100, setFollowUpMinScore)} className="w-full px-3 py-2 text-sm bg-white dark:bg-navy-900 dark:text-white border border-slate-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500/20 focus:border-navy-500 transition-colors" />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <button id="follow-up" type="button" role="switch" aria-checked={followUpEnabled} onClick={() => saveWinningToggle('followUpEnabled', !followUpEnabled, setFollowUpEnabled)} className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors ${followUpEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-navy-700'}`}>
-                    <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform mt-0.5 ${followUpEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
-                  </button>
                 </div>
 
                 <div className="flex items-start justify-between gap-4 pt-3 border-t border-slate-200 dark:border-white/8">

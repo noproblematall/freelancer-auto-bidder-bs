@@ -458,7 +458,6 @@ export default function AnalyticsPage() {
           <Kpi label="Errors" value={n(t.errored)} hint={`${pctText(t.errorRate)} of all attempts`} tone={t.errorRate > 10 ? 'bad' : undefined} />
           <Kpi label="Median bid" value={usd(t.medianBidUsd)} hint={t.medianWonBidUsd ? `won bids: ${usd(t.medianWonBidUsd)}` : 'USD projects only'} />
           <Kpi label="Response speed" value={minutes(t.medianSpeedMin)} hint={`median, ${n(t.speedSamples)} bids`} />
-          <Kpi label="Follow-ups sent" value={n(t.followUpsSent)} hint={t.followUpsSent ? 'see the follow-up table below' : 'Settings → Winning more'} />
           <Kpi label="Clients" value={n(data.clients?.count)} hint={`${n(data.clients?.repeat)} repeat`} />
         </div>
       )}
@@ -539,7 +538,6 @@ export default function AnalyticsPage() {
         <Card title="Competition" subtitle="Bids already on the project when BidPilot bid"><RateTable rows={b?.competition} label="Other bids" /></Card>
         <Card title="Response speed" subtitle="Time from the project being posted to the bid"><RateTable rows={b?.speed} label="Speed" /></Card>
         <Card title="AI relevance score" subtitle="How the score given to the project relates to replies and wins"><RateTable rows={b?.scores} label="Score" /></Card>
-        <Card title="Follow-up" subtitle="Bids with and without the follow-up message"><RateTable rows={b?.followUps} label="Follow-up" empty="No follow-ups sent yet (Settings → Auto-Bidding → Winning more)" /></Card>
         <Card title="Project type and currency">
           <div className="space-y-4">
             <RateTable rows={b?.types} label="Type" />

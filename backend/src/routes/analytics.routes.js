@@ -213,7 +213,6 @@ async function buildBidAnalytics(userId, period) {
   const byCurrency = new Map();
   const byClientScore = new Map();
   const byClientKind = new Map();
-  const byFollowUp = new Map();
   const errors = new Map();
   const replyMinutes = [];
   const speeds = [];
@@ -239,7 +238,6 @@ async function buildBidAnalytics(userId, period) {
     tally(byCurrency, p.currency || null, b);
     tally(byClientScore, bandOf(CLIENT_SCORE_BANDS, p.clientScore), b);
     tally(byClientKind, p.ownerPaymentVerified === true ? (p.ownerReviews > 0 ? 'Verified, has hired before' : 'Verified, first hire') : p.ownerPaymentVerified === false ? 'Payment not verified' : null, b);
-    if (SENT.has(b.status)) tally(byFollowUp, b.followUpAt ? 'With follow-up' : 'No follow-up', b);
     if (b.clientRepliedAt && b.placedAt) { const m = (new Date(b.clientRepliedAt) - b.placedAt) / 60000; if (m >= 0) replyMinutes.push(m); }
     if (b.placedAt && p.timeSubmitted) {
       const min = (b.placedAt - p.timeSubmitted) / 60000;
@@ -297,7 +295,6 @@ async function buildBidAnalytics(userId, period) {
       pendingReview: byStatus.pending_review || 0, retracted: byStatus.retracted || 0, rejected: byStatus.rejected || 0,
       winRate: pct(won, sent), replyRate: pct(replied, sent), errorRate: pct(errored, total),
       medianReplyMin: round1(median(replyMinutes)),
-      followUpsSent: bids.filter((b) => b.followUpAt).length,
       sentPerDay: round1(sent / days),
       avgBidUsd: amountsUsd.length ? Math.round(amountsUsd.reduce((a, b) => a + b, 0) / amountsUsd.length) : null,
       medianBidUsd: round1(median(amountsUsd)), medianWonBidUsd: round1(median(wonAmountsUsd)),
@@ -319,7 +316,6 @@ async function buildBidAnalytics(userId, period) {
     currencies: finish(byCurrency, { limit: 8 }),
     clientScores: finish(byClientScore, { order: CLIENT_SCORE_BANDS.map((b) => b[2]), limit: 10 }),
     clientKinds: finish(byClientKind, { limit: 5 }),
-    followUps: finish(byFollowUp, { limit: 2 }),
     errors: [...errors.entries()].map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count).slice(0, 8),
     decisions,
     funnel: { discovered, analysed, qualified, minScore, bid: sent, replied, won },
@@ -419,10 +415,10 @@ async function generateAiReview(userId, period = '30d', { trigger = 'manual' } =
   const openai = createOpenAIClient(decrypt(user.openaiApiKey), user.openaiModel || 'gpt-5.4-mini');
     const messages = [
       { role: 'system', content:
-        'You are a Freelancer.com bidding coach reviewing a freelancer\'s auto-bidding setup (BidPilot: searches Freelancer projects by keywords/skills, scores each project with an AI relevance score and each client with a client score (payment verified, reviews, hire history, bids already on the project), writes a proposal with an LLM, places the bid, records client replies and awards from Freelancer, can send one follow-up message per bid and can reply automatically to the client\'s first message; the freelancer\'s own profile, rate and settings are given). ' +
-        'THE GOAL IS THE NUMBER OF PROJECTS WON, NOT THE WIN RATE. Every bid the Freelancer membership allows should be used; an unused bid wins nothing. So never recommend bidding less (lower caps, higher relevance or client-score thresholds, narrower filters) as a way to improve a rate. Thresholds and filters may only be tightened when the account is actually running out of Freelancer bids (allowance exhausted, "no bids left" errors) and the freed bids would go to better projects; say so explicitly when that is the case, and otherwise keep or widen volume. Prefer changes that make each bid more likely to get a reply and an award at the same volume: proposal text, pricing position, response speed, follow-ups and automatic replies, profile strength, the right skills and clients, fixing error sources so the allowance is not wasted. ' +
-        '"replied" = the client wrote back (early signal, the bid was read); "won" = Freelancer reported the bid awarded; "lost" = the project went to someone else or expired. Reason from the numbers given: replies and wins by hour, weekday, country, budget band, competition, response speed, relevance-score band, client-score band, client kind, profile, follow-up; the error reasons; the decisions (why found projects were skipped); the funnel; the Freelancer reputation, verifications and the account checklist; the bid allowance and caps; the settings. ' +
-        'Be specific and quantitative; name the exact setting to change and the value (e.g. Settings → Auto-Bidding → AI-suggested bid amount 85%; Settings → Follow up after 24 h; Job Filters → Skills). Prefer the few changes with the largest expected effect on wins. Do not invent data; when a sample is too small (< 20 bids) say so instead of concluding. Always include the Freelancer-side levers from the checklist that are not done (verifications, profile completeness, portfolio, exams, focused skills, specific tagline, recent reviews, Preferred Freelancer Program) because they move awards more than any bidding setting; and the proposal prompt (hook in the first two lines, proof, plan, one question). ' +
+        'You are a Freelancer.com bidding coach reviewing a freelancer\'s auto-bidding setup (BidPilot: searches Freelancer projects by keywords/skills, scores each project with an AI relevance score and each client with a client score (payment verified, reviews, hire history, bids already on the project), writes a proposal with an LLM, places the bid, records client replies and awards from Freelancer and can reply automatically to the client\'s first message (Freelancer does not let a freelancer message a client first, so there are no follow-ups; the client score is shown for information and never skips a project); the freelancer\'s own profile, rate and settings are given). ' +
+        'THE GOAL IS THE NUMBER OF PROJECTS WON, NOT THE WIN RATE. Every bid the Freelancer membership allows should be used; an unused bid wins nothing. So never recommend bidding less (lower caps, higher relevance thresholds, narrower filters) as a way to improve a rate. Thresholds and filters may only be tightened when the account is actually running out of Freelancer bids (allowance exhausted, "no bids left" errors) and the freed bids would go to better projects; say so explicitly when that is the case, and otherwise keep or widen volume. Prefer changes that make each bid more likely to get a reply and an award at the same volume: proposal text, pricing position, response speed, automatic replies, profile strength, the right skills and clients, fixing error sources so the allowance is not wasted. ' +
+        '"replied" = the client wrote back (early signal, the bid was read); "won" = Freelancer reported the bid awarded; "lost" = the project went to someone else or expired. Reason from the numbers given: replies and wins by hour, weekday, country, budget band, competition, response speed, relevance-score band, client-score band, client kind, profile; the error reasons; the decisions (why found projects were skipped); the funnel; the Freelancer reputation, verifications and the account checklist; the bid allowance and caps; the settings. ' +
+        'Be specific and quantitative; name the exact setting to change and the value (e.g. Settings → Auto-Bidding → AI-suggested bid amount 85%; Job Filters → Skills). Prefer the few changes with the largest expected effect on wins. Do not invent data; when a sample is too small (< 20 bids) say so instead of concluding. Always include the Freelancer-side levers from the checklist that are not done (verifications, profile completeness, portfolio, exams, focused skills, specific tagline, recent reviews, Preferred Freelancer Program) because they move awards more than any bidding setting; and the proposal prompt (hook in the first two lines, proof, plan, one question). ' +
         `Respond with JSON only, matching this shape: ${REPORT_SCHEMA}` },
       { role: 'user', content: `Analytics period: ${period}. Data:\n${JSON.stringify(data)}` },
     ];

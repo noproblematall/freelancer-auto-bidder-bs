@@ -154,10 +154,6 @@ const server = app.listen(env.port, '127.0.0.1', () => {
   const { startOutcomeSync } = require('./services/bidding/outcomeSync');
   startOutcomeSync();
 
-  // One follow-up message per unanswered bid, when enabled in Settings (hourly)
-  const { startFollowUps } = require('./services/bidding/followUp');
-  startFollowUps();
-
   // Start the Telegram command poller (/start, /stop, /status — checks every 10s)
   const { startCommandPoller } = require('./services/messaging/telegramCommandPoller');
   startCommandPoller();
