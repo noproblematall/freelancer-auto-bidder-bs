@@ -78,7 +78,7 @@ model User {
   // employer scores below the minimum, or that already carry more bids than
   // the cap, are skipped before any OpenAI call.
   minClientScore      Int     @default(35) @map("min_client_score")
-  maxProjectBids      Int     @default(40) @map("max_project_bids")
+  maxProjectBids      Int     @default(200) @map("max_project_bids")
 
   // Follow-up message to the client some hours after a bid with no reply
   // (services/bidding/followUp.js) and the AI reply to a client's first message

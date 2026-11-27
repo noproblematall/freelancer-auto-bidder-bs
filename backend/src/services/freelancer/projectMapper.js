@@ -24,14 +24,17 @@ function countrySource(p, ownerUser) {
     : 'none';
 }
 
-// Employer facts from the `users` map (user_details + user_employer_reputation
-// + user_status projections) and the project's own bid_stats.
+// Employer facts. Freelancer now hides `owner_id` in project searches (it is
+// null and the `users` map comes back empty), so the facts come from the
+// project's own `owner_info` (status, employer reputation, registration date);
+// the `users` map is only a fallback for responses that still carry it.
 function ownerFacts(p, ownerUser) {
-  const st = ownerUser?.status || {};
-  const rep = ownerUser?.employer_reputation?.entire_history || {};
+  const info = p.owner_info || {};
+  const st = info.status || ownerUser?.status || {};
+  const rep = info.reputation?.entire_history || ownerUser?.employer_reputation?.entire_history || {};
   const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
   const bool = (v) => (typeof v === 'boolean' ? v : null);
-  const registered = num(ownerUser?.registration_date);
+  const registered = num(info.registration_date) ?? num(ownerUser?.registration_date);
   return {
     paymentVerified: bool(st.payment_verified),
     depositMade: bool(st.deposit_made),

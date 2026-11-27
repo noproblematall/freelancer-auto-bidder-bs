@@ -12,7 +12,6 @@ const { generateProposal } = require('../openai/proposalGenerator');
 const { applyAccountSettings } = require('./jobFilters');
 const { priceBid } = require('./pricing');
 const { projectDataFromApi, forPrisma } = require('../freelancer/projectMapper');
-const { getLearningSignals, learningBoost } = require('./learning');
 const logger = require('../../utils/logger');
 
 // Decision codes recorded on each project (Project.decisionReason) so the
@@ -175,7 +174,6 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
       freelancerClientId: true,
       freelancerClientSecret: true,
       sealBids: true,
-      minClientScore: true,
       maxProjectBids: true,
     },
   });
@@ -617,11 +615,11 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
     logger.warn(`Profile "${profile.name}": failed to load past clients: ${e.message}`);
   }
 
-  // Client-quality gate (Settings → Auto-Bidding): skip crowded projects and
-  // clients unlikely to hire before any OpenAI call is spent on them.
+  // Crowded-project gate (Settings → Auto-Bidding): skip projects that already
+  // have more bids than the cap before any OpenAI call is spent on them. The
+  // client score is shown on the cards only; it never stops a bid.
   {
-    const minClientScore = Number.isInteger(user?.minClientScore) ? user.minClientScore : 35;
-    const maxProjectBids = Number.isInteger(user?.maxProjectBids) ? user.maxProjectBids : 40;
+    const maxProjectBids = Number.isInteger(user?.maxProjectBids) ? user.maxProjectBids : 200;
     const before = newProjects.length;
     newProjects = newProjects.filter(p => {
       if (p.ownerId && convertedClientOwnerIds.has(p.ownerId)) return true;
@@ -629,28 +627,23 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
         decide(p, DECISION.skipped, 'too_many_bids', `${p.bidCount} bids were already on the project; your cap is ${maxProjectBids} (Settings → Auto-Bidding → Max bids on a project).`);
         return false;
       }
-      if (minClientScore > 0 && typeof p.clientScore === 'number' && p.clientScore < minClientScore) {
-        const why = p.clientScoreReasons ? ` ${p.clientScoreReasons.split('\n').join('; ')}.` : '';
-        decide(p, DECISION.skipped, 'low_client_score', `Client score ${p.clientScore} is below your minimum of ${minClientScore} (Settings → Auto-Bidding).${why}`);
-        return false;
-      }
       return true;
     });
     if (before !== newProjects.length) {
-      logger.info(`Profile "${profile.name}": client-quality gate skipped ${before - newProjects.length} project(s) (min client score ${minClientScore}, max ${maxProjectBids} bids)`);
+      logger.info(`Profile "${profile.name}": skipped ${before - newProjects.length} crowded project(s) (max ${maxProjectBids} bids)`);
     }
   }
 
   results.filtered = newProjects.length;
 
-  // When multiple profiles are active for the same user, distribute projects evenly
-  // so each profile claims its own slice instead of the first profile taking all.
-  // Uses project DB id modulo totalProfiles so the assignment is stable across runs.
-  if (totalProfiles > 1) {
-    const before = newProjects.length;
-    newProjects = newProjects.filter(p => p.id % totalProfiles === profileIndex);
-    logger.info(`Profile "${profile.name}" (slot ${profileIndex + 1}/${totalProfiles}): assigned ${newProjects.length}/${before} projects by round-robin`);
-  }
+  // Every active profile may bid on every project that passes its filters; the
+  // first one to reach it does. A project assigned to one profile by id
+  // (the old round-robin) waited for that profile's turn even when another
+  // profile could bid at once, and a popular project crossed the bid cap in
+  // those seconds. The scheduler rotates which profile goes first each run, so
+  // bids still spread across profiles, and the per-run share keeps one profile
+  // from using the whole hourly limit. A bid already placed by another profile
+  // is caught by the bid check above and the just-in-time duplicate guard below.
 
   // Deduplicate by DB project id — Freelancer occasionally returns the same project
   // twice in a single search response, which would otherwise create two pending bids.
@@ -661,9 +654,6 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
     return true;
   });
 
-  // What the account's own replies and awards say about skills and countries
-  // (services/bidding/learning.js); nudges the relevance score by a few points.
-  const learning = await getLearningSignals(profile.userId);
 
   // Steps 5-10: Analyze, Qualify, Generate, Price, Place, Log
   let bidsPlacedThisRun = 0;
@@ -718,16 +708,8 @@ async function runProfilePipeline(profile, { profileIndex = 0, totalProfiles = 1
         adjustments.push('+15 past client');
       }
 
-      // Learned from this account's replies and awards (services/bidding/learning.js)
-      {
-        const { boost, reasons } = learningBoost(learning, project);
-        if (boost) {
-          const adjusted = Math.max(0, Math.min(100, analysis.relevance_score + boost));
-          logger.info(`Project #${project.id}: learned adjustment ${boost > 0 ? '+' : ''}${boost} (${reasons.join('; ')}) → ${adjusted}`);
-          analysis = { ...analysis, relevance_score: adjusted };
-          adjustments.push(...reasons);
-        }
-      }
+      // No "learned" deductions: the AI score alone decides against the
+      // profile's threshold, so a project at or above it always gets a bid.
       const scoreNote = adjustments.length ? `AI relevance score ${rawScore}, adjusted to ${analysis.relevance_score} (${adjustments.join('; ')})` : `AI relevance score ${rawScore}`;
 
       // Step 6: Qualify

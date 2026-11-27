@@ -66,11 +66,37 @@ function close(reason) {
   subscribedKey = '';
 }
 
+// Freelancer's search lists a new project some seconds after the socket
+// announces it, so the first run can miss it. Announced projects stay here
+// until a run has saved them, and another run is asked for every few seconds
+// meanwhile (the scheduler keeps runs at least 10 s apart).
+const RETRY_EVERY_MS = 12 * 1000;
+const RETRY_FOR_MS = 2 * 60 * 1000;
+const waiting = new Map(); // Freelancer project id -> announced at
+let retryTimer = null;
+
+async function retryMissing() {
+  retryTimer = null;
+  if (waiting.size === 0) return;
+  try {
+    const found = await prisma.project.findMany({ where: { freelancerProjectId: { in: [...waiting.keys()] } }, select: { freelancerProjectId: true } });
+    for (const f of found) waiting.delete(f.freelancerProjectId);
+  } catch (_) { /* try again next tick */ }
+  const now = Date.now();
+  for (const [id, at] of waiting) if (now - at > RETRY_FOR_MS) waiting.delete(id);
+  if (waiting.size === 0) return;
+  const ids = [...waiting.keys()];
+  try { require('../bidding/scheduler').requestRun(`not in Freelancer's search yet: #${ids.slice(0, 3).join(', #')}${ids.length > 3 ? '…' : ''}`); } catch (_) {}
+  retryTimer = setTimeout(retryMissing, RETRY_EVERY_MS);
+}
+
 function onProject(data) {
   const id = data?.id;
   if (!id || seen.has(id)) return;
   seen.add(id);
   if (seen.size > MAX_SEEN) seen.delete(seen.values().next().value);
+  waiting.set(Number(id), Date.now());
+  if (!retryTimer) retryTimer = setTimeout(retryMissing, RETRY_EVERY_MS);
   state.received += 1;
   state.lastProjectAt = Date.now();
   state.lastProjectTitle = String(data.title || '').slice(0, 120);
@@ -148,6 +174,8 @@ function startProjectSocket() {
 
 function stopProjectSocket() {
   if (timer) { clearInterval(timer); timer = null; }
+  if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+  waiting.clear();
   close('stopped');
 }
 
