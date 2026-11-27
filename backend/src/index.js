@@ -76,6 +76,10 @@ app.use(errorHandler);
 
 const server = app.listen(env.port, '127.0.0.1', () => {
   logger.info(`BidPilot backend running on http://localhost:${env.port}`);
+  // Node ends any request after 5 minutes by default. The Market page's first
+  // "Fetch winning bids" reads the whole Freelancer bid history (thousands of
+  // bids) and can take longer; the server only listens on 127.0.0.1.
+  server.requestTimeout = 15 * 60 * 1000;
 
   // Pre-flight: verify OpenAI API key is valid and has quota.
   // Runs asynchronously so it never delays server startup.

@@ -12,6 +12,15 @@ const prisma = require('../../config/database');
 const logger = require('../../utils/logger');
 const webSession = require('./webSession');
 
+// Node 22+ has a built-in WebSocket; the desktop app runs on Electron 33, whose
+// Node 20 does not, so the `ws` package stands in there. Both take
+// (url, { headers }) and deliver frames through onmessage/onclose/onerror.
+function socketClass() {
+  if (typeof WebSocket !== 'undefined') return WebSocket;
+  try { return require('ws'); } catch (_) { return null; }
+}
+const SocketImpl = socketClass();
+
 const SOCKET_HOST = 'wss://notifications.freelancer.com';
 const MAINTAIN_MS = 30 * 1000;      // connect / reconnect / re-subscribe check
 const SILENCE_MS = 90 * 1000;       // the server heartbeats every ~25 s; longer silence means a dead socket
@@ -109,7 +118,7 @@ function onProject(data) {
 function connect(session, channels) {
   const server = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
   const sid = Math.random().toString(36).slice(2, 10);
-  const sock = new WebSocket(`${SOCKET_HOST}/${server}/${sid}/websocket`, { headers: { Origin: 'https://www.freelancer.com' } });
+  const sock = new SocketImpl(`${SOCKET_HOST}/${server}/${sid}/websocket`, { headers: { Origin: 'https://www.freelancer.com' } });
   const key = channels.join(',');
   ws = sock;
   lastFrameAt = Date.now();
@@ -166,7 +175,7 @@ async function maintain() {
 
 function startProjectSocket() {
   if (timer) return;
-  if (typeof WebSocket === 'undefined') { logger.warn('Live project feed: this Node version has no WebSocket; staying on the once-a-minute search'); return; }
+  if (!SocketImpl) { logger.warn('Live project feed: no WebSocket available (install the "ws" package); staying on the once-a-minute search'); return; }
   timer = setInterval(maintain, MAINTAIN_MS);
   if (timer.unref) timer.unref();
   setTimeout(maintain, 3000);

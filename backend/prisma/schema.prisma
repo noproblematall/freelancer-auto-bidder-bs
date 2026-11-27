@@ -233,6 +233,8 @@ model Project {
   winningBid WinningBid?
 
   @@index([ownerKey])
+  @@index([discoveredAt])
+  @@index([timeSubmitted])
   @@map("projects")
 }
 
@@ -308,6 +310,8 @@ model Bid {
   profile BiddingProfile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
   project Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
+  @@index([projectId])
+  @@index([userId, createdAt])
   @@map("bids")
 }
 
