@@ -16,6 +16,8 @@ import CalendarPage from './pages/CalendarPage'
 import ClientsPage from './pages/ClientsPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import MarketPage from './pages/MarketPage'
+import MessagesPage from './pages/MessagesPage'
+import ConversationPage from './pages/ConversationPage'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -55,6 +57,8 @@ export default function App() {
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/projects/:id" element={<ProjectDetailPage />} />
           <Route path="/bids" element={<BidsPage />} />
+          <Route path="/messages" element={<MessagesPage />} />
+          <Route path="/messages/:threadId" element={<ConversationPage />} />
           <Route path="/clients" element={<ClientsPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/activity" element={<ActivityLogsPage />} />

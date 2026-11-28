@@ -238,7 +238,8 @@ async function checkUserMessages(user) {
 
       if (newIncoming.length === 0) continue;
 
-      const latestMsg = newIncoming[0];
+      // Newest of the new messages (do not rely on the API's ordering).
+      const latestMsg = newIncoming.reduce((a, m) => ((m.time_created || 0) > (a.time_created || 0) ? m : a), newIncoming[0]);
       const senderId = String(latestMsg.from_user);
       const senderUser = users[senderId];
       const senderName = senderUser?.display_name

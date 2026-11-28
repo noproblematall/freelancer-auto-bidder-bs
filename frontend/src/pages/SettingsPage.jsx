@@ -825,7 +825,7 @@ export default function SettingsPage() {
           </ul>
         </nav>
 
-        <div className="flex-1 min-w-0 space-y-6">
+        <div className="w-full flex-1 min-w-0 space-y-6">
 
           {/* Freelancer.com Connection */}
           {activeSection === 'freelancer' && (

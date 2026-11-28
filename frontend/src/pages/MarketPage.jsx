@@ -64,7 +64,7 @@ function WinningBidStudy({ report, createdAt, model }) {
           ))}
         </ol>
       )}
-      <div className="grid md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {report.pricing && <div className="p-3 rounded-lg border border-slate-200 dark:border-white/8"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Pricing</p><p className="text-slate-700 dark:text-slate-200">{report.pricing.finding}</p>{report.pricing.change && <p className="mt-1 font-medium text-navy-950 dark:text-white">{report.pricing.change}</p>}</div>}
         {report.proposal && <div className="p-3 rounded-lg border border-slate-200 dark:border-white/8"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Proposal text</p><p className="text-slate-700 dark:text-slate-200">{report.proposal.finding}</p>{report.proposal.promptChanges?.length > 0 && <ul className="mt-1 list-disc pl-4 text-slate-700 dark:text-slate-200">{report.proposal.promptChanges.map((c, i) => <li key={i}>{c}</li>)}</ul>}</div>}
         {report.profile && <div className="p-3 rounded-lg border border-slate-200 dark:border-white/8"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Profile</p><p className="text-slate-700 dark:text-slate-200">{report.profile.finding}</p>{report.profile.actions?.length > 0 && <ul className="mt-1 list-disc pl-4 text-slate-700 dark:text-slate-200">{report.profile.actions.map((c, i) => <li key={i}>{c}</li>)}</ul>}</div>}
@@ -141,7 +141,7 @@ function WinningBidsTab() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2 justify-between">
         <p className="text-sm text-slate-600 dark:text-slate-300">The bid that won each project you bid on, next to yours. Winners are read from Freelancer when a project is decided; the button fetches any still missing.</p>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <select value={period} onChange={(e) => setPeriod(e.target.value)} className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-white/10 bg-white dark:bg-navy-900 dark:text-white">
             <option value="30d">Last 30 days</option><option value="90d">Last 90 days</option><option value="180d">Last 180 days</option><option value="all">All time</option>
           </select>
@@ -173,13 +173,13 @@ function WinningBidsTab() {
         </div>
       )}
 
-      <section className={`${CARD} overflow-hidden`}>
+      <section className={`${CARD} overflow-x-auto`}>
         {loading ? <p className="p-5 text-sm text-slate-500">Loading…</p> : !data?.items?.length ? (
           <div className="p-6 text-sm text-slate-600 dark:text-slate-300">
             No winning bids in this period yet. Click <b>Fetch winning bids</b> to read every project you bid on in the last 180 days from Freelancer (including bids placed outside this app) and the bid that won each closed one.
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[720px] text-sm">
             <thead className="bg-slate-50 dark:bg-navy-900/40 text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
               <tr>
                 <th className="text-left font-medium px-4 py-2">Project</th>
@@ -217,7 +217,7 @@ function WinningBidsTab() {
                   {open === i.projectId && (
                     <tr className="bg-slate-50/70 dark:bg-navy-900/40">
                       <td colSpan={6} className="px-4 py-3">
-                        <div className="grid md:grid-cols-2 gap-4 text-sm">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                           <div>
                             <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400 mb-1">Winning bid{i.winner.isMine ? ' (yours)' : ''}</p>
                             <p className="whitespace-pre-wrap text-slate-800 dark:text-slate-100">{i.winner.description || (i.winner.sealed ? 'Sealed bid — the text is not visible.' : 'Text not available.')}</p>
@@ -256,7 +256,7 @@ function ClientStudy({ report, createdAt, model }) {
         <span className="text-xs text-slate-400">{createdAt ? timeAgo(createdAt) : ''}{model ? ` · ${model}` : ''}</span>
       </div>
       {report.pitchOpening && <div className="p-3 rounded-lg bg-slate-50 dark:bg-navy-900/50 border border-slate-200 dark:border-white/8"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Open your next bid to them with</p><p className="whitespace-pre-wrap text-navy-950 dark:text-white">{report.pitchOpening}</p></div>}
-      <div className="grid md:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {report.howToPitch?.length > 0 && <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">How to pitch</p><ol className="list-decimal pl-4 space-y-0.5 text-slate-700 dark:text-slate-200">{report.howToPitch.map((x, i) => <li key={i}>{x}</li>)}</ol></div>}
         {report.whoTheyPick && <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Whom they pick</p><ul className="space-y-0.5 text-slate-700 dark:text-slate-200">{Object.entries(report.whoTheyPick).filter(([, v]) => v).map(([k, v]) => <li key={k}><span className="font-medium capitalize">{k.replace(/([A-Z])/g, ' $1').toLowerCase()}:</span> {v}</li>)}</ul></div>}
         {report.whatTheyHire?.length > 0 && <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">What they hire</p><ul className="list-disc pl-4 space-y-0.5 text-slate-700 dark:text-slate-200">{report.whatTheyHire.map((x, i) => <li key={i}>{x}</li>)}</ul></div>}
@@ -410,9 +410,9 @@ function ClientsTab() {
       </div>
       {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 text-sm text-red-700 dark:text-red-300">{error}</div>}
       {selected && <ClientDetail client={selected} onClose={() => setSelected(null)} />}
-      <section className={`${CARD} overflow-hidden`}>
+      <section className={`${CARD} overflow-x-auto`}>
         {loading ? <p className="p-5 text-sm text-slate-500">Loading…</p> : !data?.clients?.length ? <p className="p-5 text-sm text-slate-500">No clients seen in this period yet.</p> : (
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[720px] text-sm">
             <thead className="bg-slate-50 dark:bg-navy-900/40 text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
               <tr>
                 <th className="text-left font-medium px-4 py-2">Client</th>

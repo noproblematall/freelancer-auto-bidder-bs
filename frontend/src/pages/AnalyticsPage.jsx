@@ -246,7 +246,7 @@ function AiReport({ report, createdAt, model, period }) {
         </div>
       )}
 
-      <div className="grid md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {Array.isArray(report.problems) && report.problems.length > 0 && (
           <div>
             <h3 className="text-sm font-semibold text-navy-950 dark:text-white mb-2">Problems found</h3>
@@ -383,7 +383,7 @@ export default function AnalyticsPage() {
       <Card title="Freelancer account" subtitle={acct?.error ? acct.error : 'What clients see when they open your bid'} right={prof?.membership && <span className="text-xs px-2 py-1 rounded-full bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-200">{prof.membership} membership</span>}>
         {!acct?.connected && <p className="text-sm text-slate-600 dark:text-slate-300">Freelancer is not connected. <Link to="/settings" className="underline">Connect it in Settings</Link>.</p>}
         {acct?.connected && (
-          <div className="grid lg:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             <div className="flex items-start gap-3">
               {prof?.avatar ? <img src={prof.avatar.startsWith('//') ? `https:${prof.avatar}` : prof.avatar} alt="" className="w-14 h-14 rounded-full object-cover" /> : <div className="w-14 h-14 rounded-full bg-slate-200 dark:bg-navy-700" />}
               <div className="min-w-0">
@@ -463,7 +463,7 @@ export default function AnalyticsPage() {
       )}
 
       {/* Timeline + funnel */}
-      <div className="grid lg:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <Card title="Bids over time" subtitle="Sent, replied and won per day" className="lg:col-span-2">
           {b?.series?.length ? (
             <ResponsiveContainer width="100%" height={260}>
@@ -487,7 +487,7 @@ export default function AnalyticsPage() {
       </div>
 
       {/* When */}
-      <div className="grid lg:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <Card title="Hour of day" subtitle="Bids sent and won by the hour they were placed (your clock)" className="lg:col-span-2">
           {b?.hours && (
             <ResponsiveContainer width="100%" height={220}>
@@ -508,7 +508,7 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Freelancer-side levers + why projects were skipped */}
-      <div className="grid lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {acct?.checklist && (
           <Card title="Freelancer profile checklist" subtitle={`${acct.checklist.done} of ${acct.checklist.known} done · these move win rate more than any bidding setting`}>
             <Checklist checklist={acct.checklist} />
@@ -529,7 +529,7 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Who / what */}
-      <div className="grid lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <Card title="Client score" subtitle="Payment verified, reviews, hire history, account age, bids on the project"><RateTable rows={b?.clientScores} label="Client score" /></Card>
         <Card title="Client kind" subtitle="Whether the client could pay and had hired before"><RateTable rows={b?.clientKinds} label="Client" /></Card>
         <Card title="Client country" subtitle="Top countries by bids sent"><RateTable rows={b?.countries} label="Country" /></Card>

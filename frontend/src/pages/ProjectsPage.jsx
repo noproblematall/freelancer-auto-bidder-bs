@@ -275,9 +275,10 @@ export default function ProjectsPage() {
 
       {/* Search & Filter Bar */}
       <div className="bg-white dark:bg-navy-800/90 rounded-xl border border-slate-200 dark:border-white/6 shadow-lg dark:shadow-2xl dark:shadow-black/50 overflow-hidden">
-        <form onSubmit={handleSearch} className="px-5 py-4">
-          <div className="flex gap-3">
-            <div className="flex-1 relative">
+        <form onSubmit={handleSearch} className="px-4 sm:px-5 py-4">
+          {/* Narrow screens: the search box takes its own row, buttons below */}
+          <div className="flex flex-wrap gap-3">
+            <div className="flex-1 basis-full sm:basis-0 min-w-0 relative">
               <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
               </svg>
@@ -292,7 +293,7 @@ export default function ProjectsPage() {
             <button
               type="submit"
               disabled={searching}
-              className="px-5 py-2.5 bg-navy-900 dark:bg-emerald-400 text-white dark:text-navy-950 text-sm font-medium rounded-lg hover:bg-navy-800 dark:hover:bg-emerald-500 transition-colors shadow-sm disabled:opacity-50 whitespace-nowrap"
+              className="flex-1 sm:flex-none px-5 py-2.5 bg-navy-900 dark:bg-emerald-400 text-white dark:text-navy-950 text-sm font-medium rounded-lg hover:bg-navy-800 dark:hover:bg-emerald-500 transition-colors shadow-sm disabled:opacity-50 whitespace-nowrap"
             >
               {searching ? 'Searching...' : 'Search Freelancer'}
             </button>

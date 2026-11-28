@@ -87,7 +87,7 @@ function BidQuotaPill({ quota, onRefresh }) {
   )
 }
 
-export default function Header() {
+export default function Header({ onMenu }) {
   const [displayStatus, setDisplayStatus] = useState(null)
   const [quota, setQuota] = useState(null)
   const pollRef = useRef(null)
@@ -136,8 +136,18 @@ export default function Header() {
   const badge = displayStatus ? BADGE[displayStatus] : null
 
   return (
-    <header className="fixed top-0 left-64 right-0 h-16 flex items-center justify-end px-8 z-20" style={{ WebkitAppRegion: 'drag' }}>
-      <div className="flex items-center gap-3" style={{ WebkitAppRegion: 'no-drag' }}>
+    <header className="fixed top-0 left-0 lg:left-64 right-0 h-16 flex items-center justify-between lg:justify-end gap-3 px-4 sm:px-6 lg:px-8 z-20 bg-slate-50/85 dark:bg-navy-950/85 backdrop-blur-md" style={{ WebkitAppRegion: 'drag' }}>
+      {/* Narrow windows: opens the sidebar drawer */}
+      <button
+        type="button"
+        onClick={onMenu}
+        className="lg:hidden p-2 -ml-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-white/10"
+        style={{ WebkitAppRegion: 'no-drag' }}
+        aria-label="Open menu"
+      >
+        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
+      </button>
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0" style={{ WebkitAppRegion: 'no-drag' }}>
         <BidQuotaPill quota={quota} onRefresh={() => refreshQuota(true)} />
         {badge && (
           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border ${badge.badge}`}>

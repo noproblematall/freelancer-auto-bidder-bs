@@ -42,10 +42,49 @@ async function getThreadsSince(client, fromTimestampSec, limit = 20) {
   });
 
   const result = response.data?.result;
+  const threads = result?.threads || [];
+  await attachMessages(client, threads);
   return {
-    threads: result?.threads || [],
+    threads,
     users: result?.users || {},
   };
+}
+
+/**
+ * Messages of many threads in one request (GET /messages/0.1/messages/ with
+ * threads[]), oldest first per thread.
+ */
+async function getMessagesForThreads(client, threadIds, limit = 500) {
+  const ids = (threadIds || []).filter(Boolean);
+  if (!ids.length) return [];
+  const query = ids.map((id) => `threads[]=${encodeURIComponent(id)}`).join('&');
+  const response = await client.get(`/messages/0.1/messages/?${query}`, { params: { limit } });
+  const messages = response.data?.result?.messages || [];
+  return messages.sort((a, b) => (a.time_created || 0) - (b.time_created || 0));
+}
+
+/**
+ * Freelancer no longer fills `messages` on the threads list even with
+ * message_details=true (it comes back null), so every caller that reads
+ * thread.messages — the poller, reply tracking, the backfill — saw no messages
+ * at all. Fill them from the messages endpoint for the threads that lack them.
+ */
+async function attachMessages(client, threads) {
+  const missing = threads.filter((t) => !Array.isArray(t.messages) || t.messages.length === 0);
+  if (!missing.length) return threads;
+  const ids = missing.map((t) => t.thread?.id || t.id).filter(Boolean);
+  const byThread = new Map();
+  // A few threads per request so one busy thread cannot use up the limit.
+  for (let i = 0; i < ids.length; i += 10) {
+    const chunk = ids.slice(i, i + 10);
+    const messages = await getMessagesForThreads(client, chunk, 500);
+    for (const m of messages) {
+      if (!byThread.has(m.thread_id)) byThread.set(m.thread_id, []);
+      byThread.get(m.thread_id).push(m);
+    }
+  }
+  for (const t of missing) t.messages = byThread.get(t.thread?.id || t.id) || [];
+  return threads;
 }
 
 /**
@@ -111,7 +150,9 @@ async function getProjectThreads(client, projectIds, limit = 50) {
   const query = serializeParams(params) + ids.map((id) => `&contexts[]=${encodeURIComponent(id)}`).join('');
   const response = await client.get(`/messages/0.1/threads/?${query}`);
   const result = response.data?.result;
-  return { threads: result?.threads || [], users: result?.users || {} };
+  const threads = result?.threads || [];
+  await attachMessages(client, threads);
+  return { threads, users: result?.users || {} };
 }
 
-module.exports = { getThreadsSince, getMessagesFromThread, sendMessage, createProjectThread, getProjectThreads };
+module.exports = { getThreadsSince, getMessagesFromThread, getMessagesForThreads, attachMessages, sendMessage, createProjectThread, getProjectThreads };

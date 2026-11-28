@@ -76,20 +76,24 @@ export default function Pagination({ page, pageSize, total, onPage, onPageSize, 
       <div className="flex items-center gap-1">
         <IconButton icon="first" label="First page" disabled={current === 1} onClick={() => go(1)} />
         <IconButton icon="prev" label="Previous page" disabled={current === 1} onClick={() => go(current - 1)} />
-        {pageItems(current, pages).map((item, i) => item === 'gap' ? (
-          <span key={`gap-${i}`} className="inline-flex items-center justify-center h-9 w-7 text-sm text-slate-400 dark:text-slate-500 select-none" aria-hidden="true">…</span>
-        ) : (
-          <button
-            key={item}
-            type="button"
-            onClick={() => go(item)}
-            aria-label={`Page ${item}`}
-            aria-current={item === current ? 'page' : undefined}
-            className={`${BASE} ${item === current ? ACTIVE : IDLE}`}
-          >
-            {item}
-          </button>
-        ))}
+        {/* Narrow screens: "3 / 38" between the arrows instead of the number row */}
+        <span className="sm:hidden px-2 text-sm font-medium tabular-nums text-navy-950 dark:text-white whitespace-nowrap">{current} / {pages}</span>
+        <div className="hidden sm:flex items-center gap-1">
+          {pageItems(current, pages).map((item, i) => item === 'gap' ? (
+            <span key={`gap-${i}`} className="inline-flex items-center justify-center h-9 w-7 text-sm text-slate-400 dark:text-slate-500 select-none" aria-hidden="true">…</span>
+          ) : (
+            <button
+              key={item}
+              type="button"
+              onClick={() => go(item)}
+              aria-label={`Page ${item}`}
+              aria-current={item === current ? 'page' : undefined}
+              className={`${BASE} ${item === current ? ACTIVE : IDLE}`}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
         <IconButton icon="next" label="Next page" disabled={current === pages} onClick={() => go(current + 1)} />
         <IconButton icon="last" label="Last page" disabled={current === pages} onClick={() => go(pages)} />
       </div>
